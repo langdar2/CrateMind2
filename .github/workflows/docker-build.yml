@@ -15,3 +15,6 @@ jobs:
 
       - name: Smoke test essentia import
         run: docker run --rm crate-mind-analysis python -c "import essentia.standard; print('essentia ok')"
+
+      - name: Essentia feature-extraction self-test
+        run: docker run --rm crate-mind-analysis python -m crate_mind.analysis.features --self-test
