@@ -19,6 +19,9 @@ jobs:
       - name: Essentia feature-extraction self-test
         run: docker run --rm crate-mind-analysis python -m crate_mind.analysis.features --self-test
 
+      - name: Validate docker-compose.yml
+        run: docker compose config
+
       - name: End-to-end run_cycle smoke test
         run: |
           mkdir -p /tmp/test-music /tmp/test-data
