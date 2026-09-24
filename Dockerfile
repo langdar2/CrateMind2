@@ -11,17 +11,17 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 RUN mkdir -p /models && \
-    curl -sSL -o /models/msd-musicnn-1.pb \
+    curl -fsSL -o /models/msd-musicnn-1.pb \
       "https://essentia.upf.edu/models/feature-extractors/musicnn/msd-musicnn-1.pb" && \
-    curl -sSL -o /models/mood_happy-msd-musicnn-1.pb \
+    curl -fsSL -o /models/mood_happy-msd-musicnn-1.pb \
       "https://essentia.upf.edu/models/classification-heads/mood_happy/mood_happy-msd-musicnn-1.pb" && \
-    curl -sSL -o /models/mood_aggressive-msd-musicnn-1.pb \
+    curl -fsSL -o /models/mood_aggressive-msd-musicnn-1.pb \
       "https://essentia.upf.edu/models/classification-heads/mood_aggressive/mood_aggressive-msd-musicnn-1.pb" && \
-    curl -sSL -o /models/mood_relaxed-msd-musicnn-1.pb \
+    curl -fsSL -o /models/mood_relaxed-msd-musicnn-1.pb \
       "https://essentia.upf.edu/models/classification-heads/mood_relaxed/mood_relaxed-msd-musicnn-1.pb" && \
-    curl -sSL -o /models/mood_party-msd-musicnn-1.pb \
+    curl -fsSL -o /models/mood_party-msd-musicnn-1.pb \
       "https://essentia.upf.edu/models/classification-heads/mood_party/mood_party-msd-musicnn-1.pb" && \
-    curl -sSL -o /models/danceability-msd-musicnn-1.pb \
+    curl -fsSL -o /models/danceability-msd-musicnn-1.pb \
       "https://essentia.upf.edu/models/classification-heads/danceability/danceability-msd-musicnn-1.pb"
 
 ENV MODELS_DIR=/models

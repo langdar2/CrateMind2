@@ -94,6 +94,11 @@ def upsert_features(conn: sqlite3.Connection, path: str, features: dict) -> None
     conn.commit()
 
 
+def delete_features(conn: sqlite3.Connection, path: str) -> None:
+    conn.execute("DELETE FROM features WHERE path = ?", (path,))
+    conn.commit()
+
+
 def delete_track(conn: sqlite3.Connection, path: str) -> None:
     conn.execute("DELETE FROM features WHERE path = ?", (path,))
     conn.execute("DELETE FROM tracks WHERE path = ?", (path,))

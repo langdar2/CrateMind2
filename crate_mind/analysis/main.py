@@ -23,11 +23,12 @@ def run_cycle(conn, music_dir: str) -> None:
         try:
             audio_16k, audio_44k = features.load_audio_for_analysis(path)
             extracted = features.extract_features(audio_16k, audio_44k)
-            db.upsert_features(conn, path, extracted)
             db.upsert_track(conn, path, mtime, size, status="ok")
+            db.upsert_features(conn, path, extracted)
             print(f"Analyzed: {path}")
         except Exception:
             db.upsert_track(conn, path, mtime, size, status="failed")
+            db.delete_features(conn, path)
             print(f"Failed to analyze: {path}")
             traceback.print_exc()
 
