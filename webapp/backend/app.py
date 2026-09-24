@@ -1,6 +1,5 @@
 import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -14,44 +13,30 @@ import similarity
 import vuio_client
 
 DB_PATH = os.environ.get("DB_PATH", "/data/library.db")
-FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     conn = db.get_connection(DB_PATH)
-    app.state.db_conn = conn
+    app.state.conn = conn
     app.state.tracks = db.load_ok_tracks(conn)
-    try:
-        yield
-    finally:
-        conn.close()
+    yield
 
 
 app = FastAPI(lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
-def _strip_embedding(track: dict) -> dict:
-    copy = dict(track)
-    copy.pop("embedding", None)
-    return copy
-
-
-class PlaylistPreviewRequest(BaseModel):
-    preset: Optional[str] = None
+class PreviewRequest(BaseModel):
+    mode: str
+    preset_name: Optional[str] = None
     seed_path: Optional[str] = None
+    limit: int = 30
 
 
 class CreatePlaylistRequest(BaseModel):
     name: str
-    paths: list[str]
+    track_paths: list
 
 
 class CastRequest(BaseModel):
@@ -59,86 +44,74 @@ class CastRequest(BaseModel):
 
 
 @app.get("/api/stats")
-async def get_stats():
-    return db.fetch_stats(app.state.db_conn)
+def get_stats():
+    return db.fetch_stats(app.state.conn)
 
 
 @app.get("/api/presets")
-async def get_presets():
-    return {"presets": list(presets.PRESETS.keys())}
+def get_presets():
+    return presets.PRESETS
 
 
 @app.get("/api/tracks")
-async def get_tracks(q: Optional[str] = None, limit: Optional[int] = None):
-    if q:
-        tracks = db.search_ok_tracks(app.state.db_conn, q, limit or 20)
-    else:
-        tracks = app.state.tracks[: (limit or 20)]
-    return [_strip_embedding(t) for t in tracks]
+def search_tracks(q: str = "", limit: int = 20):
+    return {"tracks": db.search_ok_tracks(app.state.conn, q, limit)}
 
 
 @app.post("/api/playlists/preview")
-async def preview_playlist(request: PlaylistPreviewRequest):
-    if (request.preset is None) == (request.seed_path is None):
-        raise HTTPException(400, "must provide exactly one of preset or seed_path")
+def preview_playlist(req: PreviewRequest):
+    tracks = app.state.tracks
+    if not tracks:
+        raise HTTPException(status_code=404, detail="Keine analysierten Tracks vorhanden")
 
-    if request.preset is not None:
-        try:
-            tracks = presets.filter_tracks(app.state.tracks, request.preset, limit=30)
-        except KeyError:
-            raise HTTPException(400, f"unknown preset: {request.preset}")
-    else:
-        seed = next((t for t in app.state.tracks if t["path"] == request.seed_path), None)
+    if req.mode == "preset":
+        if req.preset_name not in presets.PRESETS:
+            raise HTTPException(status_code=400, detail=f"Unbekanntes Preset: {req.preset_name}")
+        matches = presets.filter_tracks(tracks, req.preset_name, limit=req.limit)
+    elif req.mode == "seed":
+        seed = next((t for t in tracks if t["path"] == req.seed_path), None)
         if seed is None:
-            raise HTTPException(404, "seed track not found")
-        tracks = similarity.top_similar(seed, app.state.tracks, limit=30)
+            raise HTTPException(status_code=404, detail=f"Seed-Track nicht gefunden: {req.seed_path}")
+        matches = similarity.top_similar(seed, tracks, limit=req.limit)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unbekannter Modus: {req.mode}")
 
-    return {"tracks": [_strip_embedding(t) for t in tracks]}
+    return {"tracks": [{"path": t["path"], "bpm": t["bpm"], "key": t["key"]} for t in matches]}
 
 
 @app.post("/api/playlists")
-async def create_playlist(request: CreatePlaylistRequest):
+def add_playlist(req: CreatePlaylistRequest):
     try:
-        file_ids = []
-        for path in request.paths:
-            file_id = vuio_client.find_file_id(Path(path).stem)
-            if file_id is not None:
-                file_ids.append(file_id)
-
-        playlist_id = vuio_client.create_playlist(request.name)
-        if file_ids:
-            vuio_client.add_tracks(playlist_id, file_ids)
+        playlist_id = vuio_client.create_playlist(req.name, req.track_paths)
     except vuio_client.VuioError as e:
-        raise HTTPException(502, str(e))
-
-    return {"playlist_id": playlist_id, "matched": len(file_ids), "total": len(request.paths)}
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return {"playlist_id": playlist_id}
 
 
 @app.get("/api/renderers")
-async def get_renderers():
+def list_renderers():
     try:
-        renderers = vuio_client.list_renderers()
+        return {"renderers": vuio_client.list_renderers()}
     except vuio_client.VuioError as e:
-        raise HTTPException(502, str(e))
-    return {"renderers": renderers}
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
 
 @app.post("/api/playlists/{playlist_id}/cast")
-async def cast_playlist(playlist_id: int, request: CastRequest):
+def cast_playlist(playlist_id: int, req: CastRequest):
     try:
-        vuio_client.cast_playlist(playlist_id, request.renderer_id)
+        return vuio_client.cast_playlist(playlist_id, req.renderer_id)
     except vuio_client.VuioError as e:
-        raise HTTPException(502, str(e))
-    return {"status": "casting"}
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
 
 @app.get("/api/playback-status")
-async def playback_status(renderer_id: Optional[str] = None):
+def playback_status(renderer_id: Optional[str] = None):
     try:
         return vuio_client.get_playback_status(renderer_id)
     except vuio_client.VuioError as e:
-        raise HTTPException(502, str(e))
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
 
-if FRONTEND_DIST.is_dir():
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+if os.path.isdir(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

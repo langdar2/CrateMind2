@@ -6,7 +6,7 @@ MOOD_COLUMNS = ["mood_happy", "mood_aggressive", "mood_relaxed", "mood_party", "
 
 
 def get_connection(db_path: str) -> sqlite3.Connection:
-    return sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    return sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, check_same_thread=False)
 
 
 def _bpm_histogram(bpms: list, bucket_size: int = 20) -> list:
