@@ -1,3 +1,4 @@
+import json
 import os
 
 import httpx
@@ -46,13 +47,13 @@ def _call_tool(tool_name: str, arguments: dict):
             raise VuioError(error["message"])
         raise VuioError(str(error))
 
-    result = response_json["result"]
-    if "structuredContent" in result:
-        return result["structuredContent"]
-
-    import json
-
-    return json.loads(result["content"][0]["text"])
+    try:
+        result = response_json["result"]
+        if "structuredContent" in result:
+            return result["structuredContent"]
+        return json.loads(result["content"][0]["text"])
+    except (KeyError, IndexError, TypeError) as exc:
+        raise VuioError(f"unexpected response shape from VuIO: {exc}") from exc
 
 
 def list_renderers() -> list[dict]:

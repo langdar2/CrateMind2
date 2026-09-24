@@ -81,6 +81,23 @@ def test_error_response_raises_vuio_error():
         httpx.post = original
 
 
+def test_malformed_response_raises_vuio_error():
+    def fake_post(url, headers=None, json=None, timeout=None):
+        return _FakeResponse({"result": {"content": []}})
+
+    original = httpx.post
+    httpx.post = fake_post
+    try:
+        raised = False
+        try:
+            vuio_client.list_renderers()
+        except VuioError:
+            raised = True
+        assert raised
+    finally:
+        httpx.post = original
+
+
 def test_http_failure_raises_vuio_error():
     def fake_post(url, headers=None, json=None, timeout=None):
         raise httpx.ConnectError("connection refused")
@@ -103,5 +120,6 @@ if __name__ == "__main__":
     test_find_file_id_parses_text_content_only_response()
     test_find_file_id_returns_none_when_no_results()
     test_error_response_raises_vuio_error()
+    test_malformed_response_raises_vuio_error()
     test_http_failure_raises_vuio_error()
     print("All vuio_client tests passed.")
