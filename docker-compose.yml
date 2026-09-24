@@ -1,0 +1,11 @@
+services:
+  analysis:
+    build: .
+    volumes:
+      - /Volumes/Platte/Musik:/music:ro
+      - ./data:/data
+    environment:
+      - MUSIC_DIR=/music
+      - DB_PATH=/data/library.db
+      - SCAN_INTERVAL_SECONDS=1800
+    restart: unless-stopped
