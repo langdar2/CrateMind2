@@ -18,3 +18,35 @@ jobs:
 
       - name: Essentia feature-extraction self-test
         run: docker run --rm crate-mind-analysis python -m crate_mind.analysis.features --self-test
+
+      - name: End-to-end run_cycle smoke test
+        run: |
+          mkdir -p /tmp/test-music /tmp/test-data
+          python3 -c "
+          import wave, struct, math
+          sample_rate = 44100
+          duration = 3
+          n_samples = sample_rate * duration
+          with wave.open('/tmp/test-music/test-tone.wav', 'w') as f:
+              f.setnchannels(1)
+              f.setsampwidth(2)
+              f.setframerate(sample_rate)
+              for i in range(n_samples):
+                  value = int(32767 * 0.5 * math.sin(2 * math.pi * 440 * i / sample_rate))
+                  f.writeframes(struct.pack('<h', value))
+          "
+          docker run --rm \
+            -v /tmp/test-music:/music:ro \
+            -v /tmp/test-data:/data \
+            crate-mind-analysis \
+            python -c "
+          from crate_mind.analysis import db, main as m
+          conn = db.get_connection('/data/library.db')
+          m.run_cycle(conn, '/music')
+          row = conn.execute('SELECT status FROM tracks').fetchone()
+          assert row is not None, 'no track row was created'
+          assert row[0] == 'ok', f'expected status ok, got {row[0]!r}'
+          feat_row = conn.execute('SELECT bpm, key FROM features').fetchone()
+          assert feat_row is not None, 'no features row was created'
+          print('End-to-end smoke test passed:', row, feat_row)
+          "
