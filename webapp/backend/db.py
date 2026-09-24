@@ -6,6 +6,10 @@ MOOD_COLUMNS = ["mood_happy", "mood_aggressive", "mood_relaxed", "mood_party", "
 
 
 def get_connection(db_path: str) -> sqlite3.Connection:
+    # ponytail: one shared read-only connection across FastAPI's threadpool;
+    # relies on sqlite3's default serialized threading mode. Fine for this
+    # single-user home-network app; switch to one connection per request if
+    # that assumption ever needs checking.
     return sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, check_same_thread=False)
 
 
