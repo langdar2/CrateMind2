@@ -83,6 +83,55 @@ def test_find_file_id_raises_when_path_not_found():
             pass
 
 
+def test_call_tool_raises_vuio_error_on_http_failure():
+    with patch("vuio_client.httpx.post", return_value=FakeResponse({}, status_code=500)):
+        try:
+            vuio_client._call_tool("list_renderers", {})
+            assert False, "expected VuioError"
+        except vuio_client.VuioError:
+            pass
+
+
+def test_call_tool_raises_vuio_error_on_non_json_response():
+    class NonJsonResponse(FakeResponse):
+        def json(self):
+            raise json.JSONDecodeError("Expecting value", "", 0)
+
+    with patch("vuio_client.httpx.post", return_value=NonJsonResponse({})):
+        try:
+            vuio_client._call_tool("list_renderers", {})
+            assert False, "expected VuioError"
+        except vuio_client.VuioError:
+            pass
+
+
+def test_list_renderers_raises_vuio_error_on_malformed_response():
+    with patch("vuio_client._call_tool", return_value={}):
+        try:
+            vuio_client.list_renderers()
+            assert False, "expected VuioError"
+        except vuio_client.VuioError:
+            pass
+
+
+def test_find_file_id_raises_vuio_error_on_malformed_response():
+    with patch("vuio_client._call_tool", return_value={}):
+        try:
+            vuio_client.find_file_id("/music/a.mp3")
+            assert False, "expected VuioError"
+        except vuio_client.VuioError:
+            pass
+
+
+def test_create_playlist_raises_vuio_error_on_malformed_response():
+    with patch("vuio_client._call_tool", return_value={}):
+        try:
+            vuio_client.create_playlist("My Playlist", [])
+            assert False, "expected VuioError"
+        except vuio_client.VuioError:
+            pass
+
+
 if __name__ == "__main__":
     test_call_tool_parses_structured_content()
     test_call_tool_parses_text_content_fallback()
@@ -90,4 +139,9 @@ if __name__ == "__main__":
     test_call_tool_raises_vuio_error_on_malformed_content()
     test_create_playlist_creates_then_adds_resolved_file_ids()
     test_find_file_id_raises_when_path_not_found()
+    test_call_tool_raises_vuio_error_on_http_failure()
+    test_call_tool_raises_vuio_error_on_non_json_response()
+    test_list_renderers_raises_vuio_error_on_malformed_response()
+    test_find_file_id_raises_vuio_error_on_malformed_response()
+    test_create_playlist_raises_vuio_error_on_malformed_response()
     print("All vuio_client tests passed.")

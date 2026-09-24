@@ -39,6 +39,8 @@ def _call_tool(name: str, arguments: dict) -> dict:
         payload = response.json()
     except httpx.HTTPError as e:
         raise VuioError(f"VuIO unreachable at {url}: {e}") from e
+    except json.JSONDecodeError as e:
+        raise VuioError(f"VuIO returned a non-JSON response from {url}: {e}") from e
 
     if "error" in payload:
         raise VuioError(f"VuIO tool '{name}' failed: {payload['error']}")
@@ -53,7 +55,11 @@ def _call_tool(name: str, arguments: dict) -> dict:
 
 
 def list_renderers() -> list:
-    return _call_tool("list_renderers", {})["renderers"]
+    result = _call_tool("list_renderers", {})
+    try:
+        return result["renderers"]
+    except (KeyError, TypeError) as e:
+        raise VuioError(f"unexpected response shape from VuIO for tool 'list_renderers': {e}") from e
 
 
 def find_file_id(path: str) -> int:
@@ -61,15 +67,22 @@ def find_file_id(path: str) -> int:
     # ponytail: one search_media call per track; fine for typical playlist
     # sizes (<100 tracks), batch if that ever becomes the bottleneck.
     results = _call_tool("search_media", {"query": filename, "category": "audio", "limit": 10})
-    for f in results["files"]:
-        if f["path"] == path:
-            return f["id"]
+    try:
+        files = results["files"]
+        for f in files:
+            if f["path"] == path:
+                return f["id"]
+    except (KeyError, TypeError) as e:
+        raise VuioError(f"unexpected response shape from VuIO for tool 'search_media': {e}") from e
     raise VuioError(f"Track not found in VuIO library: {path}")
 
 
 def create_playlist(name: str, track_paths: list) -> int:
     created = _call_tool("create_playlist", {"name": name})
-    playlist_id = created["playlist_id"]
+    try:
+        playlist_id = created["playlist_id"]
+    except (KeyError, TypeError) as e:
+        raise VuioError(f"unexpected response shape from VuIO for tool 'create_playlist': {e}") from e
     file_ids = [find_file_id(path) for path in track_paths]
     _call_tool("add_to_playlist", {"playlist_id": playlist_id, "media_file_ids": file_ids})
     return playlist_id
