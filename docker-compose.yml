@@ -1,6 +1,10 @@
 services:
   analysis:
     build: .
+    # ponytail: essentia-tensorflow has no linux/arm64 wheel; run under x86_64
+    # emulation on Apple Silicon. Enable "Rosetta for x86/amd64 emulation" in
+    # Docker Desktop for near-native speed, otherwise it falls back to QEMU.
+    platform: linux/amd64
     volumes:
       - /Volumes/Platte/Musik:/music:ro
       - ./data:/data
