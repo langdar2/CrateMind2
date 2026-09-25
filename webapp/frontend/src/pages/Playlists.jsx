@@ -119,16 +119,17 @@ export default function Playlists() {
             />
             <ul>
               {seedResults.map((t) => (
-                <li key={t.path}>
-                  <button
-                    onClick={() => {
-                      setSeedPath(t.path);
-                      setSeedQuery(t.path);
-                      setSeedResults([]);
-                    }}
-                  >
-                    {t.path}
-                  </button>
+                <li
+                  key={t.path}
+                  className="card-row"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => {
+                    setSeedPath(t.path);
+                    setSeedQuery(t.path);
+                    setSeedResults([]);
+                  }}
+                >
+                  <span className="path">{t.path}</span>
                 </li>
               ))}
             </ul>
@@ -142,11 +143,13 @@ export default function Playlists() {
           <h3>Vorschau ({preview.length} Tracks)</h3>
           <ul>
             {preview.map((t, i) => (
-              <li key={t.path}>
-                {t.path} ({t.bpm ? t.bpm.toFixed(0) : "?"} BPM, {t.key})
-                <button onClick={() => moveTrack(i, -1)} disabled={i === 0}>↑</button>
-                <button onClick={() => moveTrack(i, 1)} disabled={i === preview.length - 1}>↓</button>
-                <button onClick={() => removeTrack(t.path)}>Entfernen</button>
+              <li key={t.path} className="card-row">
+                <span className="path">{t.path} ({t.bpm ? t.bpm.toFixed(0) : "?"} BPM, {t.key})</span>
+                <span style={{ display: "flex", gap: "4px" }}>
+                  <button onClick={() => moveTrack(i, -1)} disabled={i === 0}>↑</button>
+                  <button onClick={() => moveTrack(i, 1)} disabled={i === preview.length - 1}>↓</button>
+                  <button onClick={() => removeTrack(t.path)}>Entfernen</button>
+                </span>
               </li>
             ))}
           </ul>
@@ -156,7 +159,7 @@ export default function Playlists() {
             value={playlistName}
             onChange={(e) => setPlaylistName(e.target.value)}
           />
-          <button onClick={handleCreate}>In VuIO anlegen</button>
+          <button className="btn-primary" onClick={handleCreate}>In VuIO anlegen</button>
         </div>
       )}
 
@@ -164,7 +167,9 @@ export default function Playlists() {
         <div className="tile">
           <h3>Auf Renderer abspielen</h3>
           {renderers.map((r) => (
-            <button key={r.id} onClick={() => handleCast(r.id)}>{r.friendly_name}</button>
+            <button key={r.id} className="btn-primary" onClick={() => handleCast(r.id)} style={{ marginRight: "8px" }}>
+              {r.friendly_name}
+            </button>
           ))}
         </div>
       )}
