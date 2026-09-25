@@ -26,8 +26,8 @@ def run_cycle(conn, music_dir: str) -> None:
             db.upsert_track(conn, path, mtime, size, status="ok")
             db.upsert_features(conn, path, extracted)
             print(f"Analyzed: {path}")
-        except Exception:
-            db.upsert_track(conn, path, mtime, size, status="failed")
+        except Exception as e:
+            db.upsert_track(conn, path, mtime, size, status="failed", error_message=str(e))
             db.delete_features(conn, path)
             print(f"Failed to analyze: {path}")
             traceback.print_exc()
@@ -39,6 +39,7 @@ def main() -> None:
     interval = int(os.environ.get("SCAN_INTERVAL_SECONDS", "1800"))
 
     conn = db.get_connection(db_path)
+    db.reset_failed_without_reason(conn)
 
     while True:
         print("Starting scan cycle...")
