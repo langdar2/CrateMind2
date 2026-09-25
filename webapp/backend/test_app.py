@@ -96,10 +96,28 @@ def test_cast_endpoint():
     mock_cast.assert_called_once_with(7, "r1")
 
 
+def test_failed_tracks_endpoint():
+    with TestClient(app_module.app) as client:
+        response = client.get("/api/tracks/failed")
+    assert response.status_code == 200
+    body = response.json()
+    assert "tracks" in body
+    assert "total" in body
+
+
+def test_failed_tracks_endpoint_filters_by_query():
+    with TestClient(app_module.app) as client:
+        response = client.get("/api/tracks/failed", params={"q": "nomatch"})
+    assert response.status_code == 200
+    assert response.json()["tracks"] == []
+
+
 if __name__ == "__main__":
     test_stats_endpoint_returns_counts()
     test_presets_endpoint_lists_presets()
     test_tracks_search_endpoint()
+    test_failed_tracks_endpoint()
+    test_failed_tracks_endpoint_filters_by_query()
     test_preview_preset_mode()
     test_preview_unknown_seed_returns_404()
     test_create_playlist_maps_vuio_error_to_502()
