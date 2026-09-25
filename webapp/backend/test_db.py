@@ -73,8 +73,56 @@ def test_search_ok_tracks_matches_substring():
     assert [r["path"] for r in results] == ["/music/a.mp3"]
 
 
+def test_search_failed_tracks_returns_error_message_and_total():
+    path = _make_test_db()
+    conn = analysis_db.get_connection(path)
+    analysis_db.upsert_track(conn, "/music/c.mp3", mtime=1.0, size=100, status="failed", error_message="decode error")
+    conn.close()
+    conn = db.get_connection(path)
+
+    result = db.search_failed_tracks(conn)
+
+    assert result["total"] == 1
+    assert result["tracks"] == [{"path": "/music/c.mp3", "error_message": "decode error"}]
+
+
+def test_search_failed_tracks_filters_by_query():
+    path = _make_test_db()
+    conn = analysis_db.get_connection(path)
+    analysis_db.upsert_track(conn, "/music/c.mp3", mtime=1.0, size=100, status="failed", error_message="decode error")
+    analysis_db.upsert_track(conn, "/music/d.mp3", mtime=1.0, size=100, status="failed", error_message="io error")
+    conn.close()
+    conn = db.get_connection(path)
+
+    result = db.search_failed_tracks(conn, query="d.mp3")
+
+    assert result["total"] == 1
+    assert result["tracks"][0]["path"] == "/music/d.mp3"
+
+
+def test_search_failed_tracks_paginates_with_limit_and_offset():
+    path = _make_test_db()
+    conn = analysis_db.get_connection(path)
+    analysis_db.upsert_track(conn, "/music/c.mp3", mtime=1.0, size=100, status="failed", error_message="e1")
+    analysis_db.upsert_track(conn, "/music/d.mp3", mtime=1.0, size=100, status="failed", error_message="e2")
+    analysis_db.upsert_track(conn, "/music/e.mp3", mtime=1.0, size=100, status="failed", error_message="e3")
+    conn.close()
+    conn = db.get_connection(path)
+
+    page1 = db.search_failed_tracks(conn, limit=2, offset=0)
+    page2 = db.search_failed_tracks(conn, limit=2, offset=2)
+
+    assert page1["total"] == 3
+    assert len(page1["tracks"]) == 2
+    assert page2["total"] == 3
+    assert len(page2["tracks"]) == 1
+
+
 if __name__ == "__main__":
     test_fetch_stats_counts_status_and_aggregates()
     test_load_ok_tracks_returns_only_ok_with_embedding()
     test_search_ok_tracks_matches_substring()
+    test_search_failed_tracks_returns_error_message_and_total()
+    test_search_failed_tracks_filters_by_query()
+    test_search_failed_tracks_paginates_with_limit_and_offset()
     print("All db tests passed.")

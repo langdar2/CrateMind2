@@ -84,3 +84,25 @@ def search_ok_tracks(conn: sqlite3.Connection, query: str, limit: int = 20) -> l
         (like, limit),
     ).fetchall()
     return [{"path": path, "bpm": bpm, "key": key} for path, bpm, key in rows]
+
+
+def search_failed_tracks(conn: sqlite3.Connection, query: str = "", limit: int = 50, offset: int = 0) -> dict:
+    like = f"%{query}%"
+    total = conn.execute(
+        "SELECT COUNT(*) FROM tracks WHERE status = 'failed' AND path LIKE ?",
+        (like,),
+    ).fetchone()[0]
+    rows = conn.execute(
+        """
+        SELECT path, error_message
+        FROM tracks
+        WHERE status = 'failed' AND path LIKE ?
+        ORDER BY path
+        LIMIT ? OFFSET ?
+        """,
+        (like, limit, offset),
+    ).fetchall()
+    return {
+        "tracks": [{"path": path, "error_message": error_message} for path, error_message in rows],
+        "total": total,
+    }
