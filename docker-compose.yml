@@ -9,3 +9,16 @@ services:
       - DB_PATH=/data/library.db
       - SCAN_INTERVAL_SECONDS=1800
     restart: unless-stopped
+
+  webapp:
+    build:
+      context: .
+      dockerfile: webapp/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data:ro
+    environment:
+      - DB_PATH=/data/library.db
+      - VUIO_BASE_URL=http://192.168.0.54:8080
+    restart: unless-stopped
