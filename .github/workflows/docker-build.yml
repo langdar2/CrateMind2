@@ -53,3 +53,40 @@ jobs:
           assert feat_row is not None, 'no features row was created'
           print('End-to-end smoke test passed:', row, feat_row)
           "
+
+  webapp-build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: pip install -r webapp/backend/requirements.txt
+
+      - name: Run backend tests
+        run: |
+          python webapp/backend/test_db.py
+          python webapp/backend/test_presets.py
+          python webapp/backend/test_similarity.py
+          python webapp/backend/test_vuio_client.py
+          python webapp/backend/test_app.py
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        working-directory: webapp/frontend
+        run: npm install
+
+      - name: Build frontend
+        working-directory: webapp/frontend
+        run: npm run build
+
+      - name: Build webapp Docker image
+        run: docker build -t crate-mind-webapp -f webapp/Dockerfile .
