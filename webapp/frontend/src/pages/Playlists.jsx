@@ -22,6 +22,7 @@ export default function Playlists() {
   const [playlistId, setPlaylistId] = useState(null);
   const [renderers, setRenderers] = useState([]);
   const [error, setError] = useState(null);
+  const seedQueryRef = useRef("");
 
   useEffect(() => {
     getStats().then((s) => setHasTracks((s.status_counts.ok || 0) > 0));
@@ -42,8 +43,6 @@ export default function Playlists() {
   if (hasTracks === false) {
     return <p>Noch keine analysierten Tracks vorhanden - Playlist-Generierung ist noch nicht möglich.</p>;
   }
-
-  const seedQueryRef = useRef("");
 
   const searchSeed = async (q) => {
     setSeedQuery(q);
