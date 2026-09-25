@@ -5,3 +5,4 @@ data/
 .superpowers/
 node_modules/
 dist/
+.claude/
