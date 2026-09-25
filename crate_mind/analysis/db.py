@@ -30,6 +30,10 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA_SQL)
     conn.commit()
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(tracks)").fetchall()}
+    if "error_message" not in columns:
+        conn.execute("ALTER TABLE tracks ADD COLUMN error_message TEXT")
+        conn.commit()
     return conn
 
 
@@ -47,19 +51,27 @@ def all_track_paths(conn: sqlite3.Connection) -> set:
     return {r[0] for r in rows}
 
 
-def upsert_track(conn: sqlite3.Connection, path: str, mtime: float, size: int, status: str) -> None:
+def upsert_track(
+    conn: sqlite3.Connection, path: str, mtime: float, size: int, status: str, error_message: str = None
+) -> None:
     conn.execute(
         """
-        INSERT INTO tracks (path, mtime, size, status, last_scanned)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO tracks (path, mtime, size, status, last_scanned, error_message)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(path) DO UPDATE SET
             mtime = excluded.mtime,
             size = excluded.size,
             status = excluded.status,
-            last_scanned = excluded.last_scanned
+            last_scanned = excluded.last_scanned,
+            error_message = excluded.error_message
         """,
-        (path, mtime, size, status, time.time()),
+        (path, mtime, size, status, time.time(), error_message),
     )
+    conn.commit()
+
+
+def reset_failed_without_reason(conn: sqlite3.Connection) -> None:
+    conn.execute("UPDATE tracks SET status = 'pending' WHERE status = 'failed' AND error_message IS NULL")
     conn.commit()
 
 
