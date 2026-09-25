@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getStats,
   getPresets,
@@ -43,14 +43,19 @@ export default function Playlists() {
     return <p>Noch keine analysierten Tracks vorhanden - Playlist-Generierung ist noch nicht möglich.</p>;
   }
 
+  const seedQueryRef = useRef("");
+
   const searchSeed = async (q) => {
     setSeedQuery(q);
+    seedQueryRef.current = q;
     if (q.length < 2) {
       setSeedResults([]);
       return;
     }
     const result = await searchTracks(q);
-    setSeedResults(result.tracks);
+    if (seedQueryRef.current === q) {
+      setSeedResults(result.tracks);
+    }
   };
 
   const runPreview = async () => {
