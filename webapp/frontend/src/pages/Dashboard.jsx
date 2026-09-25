@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { getStats, getFailedTracks } from "../api.js";
+import { useInterval } from "../hooks.js";
 
 const PAGE_SIZE = 50;
+const POLL_MS = 3000;
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
@@ -16,6 +18,14 @@ export default function Dashboard() {
   useEffect(() => {
     getStats().then(setStats).catch((e) => setError(e.message));
   }, []);
+
+  const pending = stats ? stats.status_counts.pending || 0 : undefined;
+  useInterval(
+    () => {
+      getStats().then(setStats).catch(() => {});
+    },
+    pending === undefined || pending > 0 ? POLL_MS : null
+  );
 
   const loadFailed = (q, offset, append) => {
     setFailedError(null);
@@ -37,9 +47,13 @@ export default function Dashboard() {
   if (!stats) return <p>Lade...</p>;
 
   const analyzed = stats.status_counts.ok || 0;
-  if (analyzed === 0) {
+  if (analyzed === 0 && pending === 0) {
     return <p>Noch keine Analyse-Daten vorhanden.</p>;
   }
+
+  const counts = stats.status_counts;
+  const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
+  const progressPct = total > 0 ? Math.round(((total - (counts.pending || 0)) / total) * 100) : 0;
 
   const keyData = Object.entries(stats.key_counts).map(([key, count]) => ({ key, count }));
 
@@ -49,9 +63,15 @@ export default function Dashboard() {
         <h3 onClick={() => setExpanded(!expanded)} style={{ cursor: "pointer" }}>
           Analyse-Fortschritt {expanded ? "▾" : "▸"}
         </h3>
-        <ul>
-          {Object.entries(stats.status_counts).map(([status, count]) => (
-            <li key={status}>{status}: {count}</li>
+        <div className="progress-bar">
+          <div className="progress-bar-fill" style={{ width: `${progressPct}%` }} />
+        </div>
+        <ul className="field-list">
+          {Object.entries(counts).map(([status, count]) => (
+            <li key={status} className="field">
+              <span className="label">{status}</span>
+              <span>{count}</span>
+            </li>
           ))}
         </ul>
         {expanded && (
@@ -65,7 +85,10 @@ export default function Dashboard() {
             {failedError && <p className="error">Fehler: {failedError}</p>}
             <ul>
               {failedTracks.map((t) => (
-                <li key={t.path}>{t.path} — {t.error_message}</li>
+                <li key={t.path} className="card-row">
+                  <span className="path">{t.path}</span>
+                  <span className="error">{t.error_message}</span>
+                </li>
               ))}
             </ul>
             {failedTracks.length < failedTotal && (
@@ -78,10 +101,10 @@ export default function Dashboard() {
         <h3>BPM-Verteilung</h3>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={stats.bpm_histogram}>
-            <XAxis dataKey="bucket" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="count" fill="#8884d8" />
+            <XAxis dataKey="bucket" stroke="#7c7c94" />
+            <YAxis stroke="#7c7c94" />
+            <Tooltip contentStyle={{ background: "#161227", border: "1px solid rgba(255,255,255,0.1)" }} />
+            <Bar dataKey="count" fill="#7c5cff" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -90,17 +113,20 @@ export default function Dashboard() {
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={keyData}>
             <XAxis dataKey="key" hide />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="count" fill="#82ca9d" />
+            <YAxis stroke="#7c7c94" />
+            <Tooltip contentStyle={{ background: "#161227", border: "1px solid rgba(255,255,255,0.1)" }} />
+            <Bar dataKey="count" fill="#5ce1ff" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
       <div className="tile">
         <h3>Mood-Durchschnitte</h3>
-        <ul>
+        <ul className="field-list">
           {Object.entries(stats.mood_averages).map(([mood, value]) => (
-            <li key={mood}>{mood}: {value.toFixed(2)}</li>
+            <li key={mood} className="field">
+              <span className="label">{mood}</span>
+              <span>{value.toFixed(2)}</span>
+            </li>
           ))}
         </ul>
       </div>
