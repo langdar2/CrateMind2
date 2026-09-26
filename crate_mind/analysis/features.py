@@ -1,5 +1,7 @@
 import argparse
 import os
+import shutil
+import tempfile
 
 import numpy as np
 from essentia.standard import (
@@ -77,9 +79,23 @@ def extract_features(audio_16k: np.ndarray, audio_44k: np.ndarray) -> dict:
 
 
 def load_audio_for_analysis(path: str):
-    """Returns (audio_16k, audio_44k) as mono float32 numpy arrays."""
-    audio_44k = MonoLoader(filename=path, sampleRate=44100)()
-    audio_16k = MonoLoader(filename=path, sampleRate=16000)()
+    """Returns (audio_16k, audio_44k) as mono float32 numpy arrays.
+
+    # ponytail: copies to a local tempfile before loading. MP4-container
+    # formats (m4a/alac) need random-access seeks to find the moov atom,
+    # which fail with EPERM over our emulated/networked Docker mount.
+    # Copying first sidesteps that; upgrade to extension-based skipping if
+    # the copy overhead ever matters.
+    """
+    suffix = os.path.splitext(path)[1]
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        shutil.copyfile(path, tmp.name)
+        tmp_path = tmp.name
+    try:
+        audio_44k = MonoLoader(filename=tmp_path, sampleRate=44100)()
+        audio_16k = MonoLoader(filename=tmp_path, sampleRate=16000)()
+    finally:
+        os.remove(tmp_path)
     return audio_16k, audio_44k
 
 
