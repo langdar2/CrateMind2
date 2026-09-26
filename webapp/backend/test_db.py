@@ -118,6 +118,21 @@ def test_search_failed_tracks_paginates_with_limit_and_offset():
     assert len(page2["tracks"]) == 1
 
 
+def test_retry_failed_tracks_resets_status_and_clears_error():
+    path = _make_test_db()
+    conn = analysis_db.get_connection(path)
+    analysis_db.upsert_track(conn, "/music/c.mp3", mtime=1.0, size=100, status="failed", error_message="decode error")
+    conn.close()
+    conn = db.get_connection(path)
+
+    retried = db.retry_failed_tracks(conn)
+
+    assert retried == 1
+    assert db.search_failed_tracks(conn)["total"] == 0
+    row = conn.execute("SELECT status, error_message FROM tracks WHERE path = ?", ("/music/c.mp3",)).fetchone()
+    assert row == ("pending", None)
+
+
 if __name__ == "__main__":
     test_fetch_stats_counts_status_and_aggregates()
     test_load_ok_tracks_returns_only_ok_with_embedding()
@@ -125,4 +140,5 @@ if __name__ == "__main__":
     test_search_failed_tracks_returns_error_message_and_total()
     test_search_failed_tracks_filters_by_query()
     test_search_failed_tracks_paginates_with_limit_and_offset()
+    test_retry_failed_tracks_resets_status_and_clears_error()
     print("All db tests passed.")

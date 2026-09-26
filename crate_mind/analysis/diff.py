@@ -12,6 +12,11 @@ def classify_file(mtime: float, size: int, existing_row: dict | None) -> DiffRes
         return DiffResult.NEW
     if existing_row["mtime"] != mtime or existing_row["size"] != size:
         return DiffResult.CHANGED
+    # ponytail: also retry rows left at 'pending'/'failed' even when the file
+    # itself hasn't changed, so a manual "retry" (status reset, no touch) is
+    # picked up on the next cycle instead of being classified UNCHANGED forever.
+    if existing_row["status"] != "ok":
+        return DiffResult.CHANGED
     return DiffResult.UNCHANGED
 
 

@@ -112,12 +112,25 @@ def test_failed_tracks_endpoint_filters_by_query():
     assert response.json()["tracks"] == []
 
 
+def test_retry_failed_endpoint_resets_failed_tracks():
+    analysis_db.upsert_track(app_module.app.state.conn, "/music/broken.m4a", mtime=1.0, size=100,
+                              status="failed", error_message="Operation not permitted")
+    with TestClient(app_module.app) as client:
+        response = client.post("/api/tracks/retry-failed")
+    assert response.status_code == 200
+    assert response.json()["retried"] >= 1
+    assert app_module.app.state.conn.execute(
+        "SELECT status FROM tracks WHERE path = ?", ("/music/broken.m4a",)
+    ).fetchone() == ("pending",)
+
+
 if __name__ == "__main__":
     test_stats_endpoint_returns_counts()
     test_presets_endpoint_lists_presets()
     test_tracks_search_endpoint()
     test_failed_tracks_endpoint()
     test_failed_tracks_endpoint_filters_by_query()
+    test_retry_failed_endpoint_resets_failed_tracks()
     test_preview_preset_mode()
     test_preview_unknown_seed_returns_404()
     test_create_playlist_maps_vuio_error_to_502()

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { getStats, getFailedTracks } from "../api.js";
+import { getStats, getFailedTracks, retryFailedTracks } from "../api.js";
 import { useInterval } from "../hooks.js";
 
 const PAGE_SIZE = 50;
@@ -14,6 +14,7 @@ export default function Dashboard() {
   const [failedTracks, setFailedTracks] = useState([]);
   const [failedTotal, setFailedTotal] = useState(0);
   const [failedError, setFailedError] = useState(null);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     getStats().then(setStats).catch((e) => setError(e.message));
@@ -42,6 +43,20 @@ export default function Dashboard() {
     loadFailed(query, 0, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded, query]);
+
+  const handleRetryFailed = async () => {
+    setRetrying(true);
+    setFailedError(null);
+    try {
+      await retryFailedTracks();
+      loadFailed(query, 0, false);
+      getStats().then(setStats).catch(() => {});
+    } catch (e) {
+      setFailedError(e.message);
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   if (error) return <p className="error">Fehler: {error}</p>;
   if (!stats) return <p>Lade...</p>;
@@ -82,6 +97,14 @@ export default function Dashboard() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
+            <button
+              className="btn-primary"
+              onClick={handleRetryFailed}
+              disabled={retrying || !(counts.failed > 0)}
+              style={{ marginLeft: "8px" }}
+            >
+              {retrying ? "Wird gestartet..." : "Analyse für fehlende Tracks starten"}
+            </button>
             {failedError && <p className="error">Fehler: {failedError}</p>}
             <ul>
               {failedTracks.map((t) => (

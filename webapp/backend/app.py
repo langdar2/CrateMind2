@@ -63,6 +63,12 @@ def get_failed_tracks(q: str = "", limit: int = 50, offset: int = 0):
     return db.search_failed_tracks(app.state.conn, query=q, limit=limit, offset=offset)
 
 
+@app.post("/api/tracks/retry-failed")
+def retry_failed_tracks():
+    count = db.retry_failed_tracks(app.state.conn)
+    return {"retried": count}
+
+
 @app.post("/api/playlists/preview")
 def preview_playlist(req: PreviewRequest):
     tracks = app.state.tracks

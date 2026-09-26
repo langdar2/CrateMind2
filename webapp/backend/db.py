@@ -6,11 +6,12 @@ MOOD_COLUMNS = ["mood_happy", "mood_aggressive", "mood_relaxed", "mood_party", "
 
 
 def get_connection(db_path: str) -> sqlite3.Connection:
-    # ponytail: one shared read-only connection across FastAPI's threadpool;
-    # relies on sqlite3's default serialized threading mode. Fine for this
-    # single-user home-network app; switch to one connection per request if
-    # that assumption ever needs checking.
-    return sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, check_same_thread=False)
+    # ponytail: one shared connection across FastAPI's threadpool; relies on
+    # sqlite3's default serialized threading mode. Fine for this single-user
+    # home-network app; switch to one connection per request if that
+    # assumption ever needs checking. Read-write (not mode=ro) so the retry
+    # endpoint can flip failed tracks back to pending.
+    return sqlite3.connect(db_path, check_same_thread=False)
 
 
 def _bpm_histogram(bpms: list, bucket_size: int = 20) -> list:
@@ -106,3 +107,9 @@ def search_failed_tracks(conn: sqlite3.Connection, query: str = "", limit: int =
         "tracks": [{"path": path, "error_message": error_message} for path, error_message in rows],
         "total": total,
     }
+
+
+def retry_failed_tracks(conn: sqlite3.Connection) -> int:
+    cur = conn.execute("UPDATE tracks SET status = 'pending', error_message = NULL WHERE status = 'failed'")
+    conn.commit()
+    return cur.rowcount

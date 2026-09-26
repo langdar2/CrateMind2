@@ -21,7 +21,9 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./data:/data:ro
+      # ponytail: read-write so the "retry failed tracks" endpoint can flip
+      # status back to pending; the analysis service still owns all other writes.
+      - ./data:/data
     environment:
       - DB_PATH=/data/library.db
       - VUIO_BASE_URL=http://192.168.0.54:8080

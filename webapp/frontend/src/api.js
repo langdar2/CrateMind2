@@ -14,6 +14,7 @@ export const getPresets = () => request("/presets");
 export const searchTracks = (q) => request(`/tracks?q=${encodeURIComponent(q)}&limit=10`);
 export const getFailedTracks = (q, limit, offset) =>
   request(`/tracks/failed?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`);
+export const retryFailedTracks = () => request("/tracks/retry-failed", { method: "POST" });
 export const previewPlaylist = (body) =>
   request("/playlists/preview", {
     method: "POST",
