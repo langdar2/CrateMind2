@@ -1,6 +1,7 @@
 import argparse
 import os
 import shutil
+import subprocess
 import tempfile
 
 import numpy as np
@@ -78,19 +79,33 @@ def extract_features(audio_16k: np.ndarray, audio_44k: np.ndarray) -> dict:
     }
 
 
+MP4_CONTAINER_EXTENSIONS = {".m4a", ".mp4", ".alac"}
+
+
 def load_audio_for_analysis(path: str):
     """Returns (audio_16k, audio_44k) as mono float32 numpy arrays.
 
-    # ponytail: copies to a local tempfile before loading. MP4-container
-    # formats (m4a/alac) need random-access seeks to find the moov atom,
-    # which fail with EPERM over our emulated/networked Docker mount.
-    # Copying first sidesteps that; upgrade to extension-based skipping if
-    # the copy overhead ever matters.
+    # ponytail: MP4-container formats (m4a/alac) still hit "Operation not
+    # permitted" in Essentia's own MP4 demuxer even off a local tempfile copy,
+    # so a network-mount seek issue isn't the (whole) cause - most likely the
+    # linux/amd64 QEMU emulation layer mishandling a syscall libavformat's MP4
+    # reader relies on. Sidestep it entirely by pre-transcoding those formats
+    # to WAV with the ffmpeg binary (sequential read/write, no seeking) before
+    # MonoLoader ever touches the file. Everything else still gets the plain
+    # tempfile copy.
     """
-    suffix = os.path.splitext(path)[1]
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        shutil.copyfile(path, tmp.name)
-        tmp_path = tmp.name
+    suffix = os.path.splitext(path)[1].lower()
+    if suffix in MP4_CONTAINER_EXTENSIONS:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp_path = tmp.name
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", path, "-ac", "1", tmp_path],
+            check=True, capture_output=True,
+        )
+    else:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            shutil.copyfile(path, tmp.name)
+            tmp_path = tmp.name
     try:
         audio_44k = MonoLoader(filename=tmp_path, sampleRate=44100)()
         audio_16k = MonoLoader(filename=tmp_path, sampleRate=16000)()
