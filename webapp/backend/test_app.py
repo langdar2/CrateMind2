@@ -31,6 +31,7 @@ def _make_test_db():
 os.environ["DB_PATH"] = _make_test_db()
 
 import app as app_module
+import typesafe_client
 import vuio_client
 
 
@@ -64,6 +65,20 @@ def test_preview_unknown_seed_returns_404():
     with TestClient(app_module.app) as client:
         response = client.post("/api/playlists/preview", json={"mode": "seed", "seed_path": "/no/such.mp3"})
     assert response.status_code == 404
+
+
+def test_preview_smart_mode_requires_mood_prompt():
+    with TestClient(app_module.app) as client:
+        response = client.post("/api/playlists/preview", json={"mode": "smart"})
+    assert response.status_code == 400
+
+
+def test_preview_smart_mode_ranks_by_vibe():
+    with patch.object(typesafe_client, "rank_by_vibe", return_value=[{"path": "/music/a.mp3", "bpm": 120.0, "key": "C major"}]):
+        with TestClient(app_module.app) as client:
+            response = client.post("/api/playlists/preview", json={"mode": "smart", "mood_prompt": "chill sunday"})
+    assert response.status_code == 200
+    assert response.json()["tracks"][0]["path"] == "/music/a.mp3"
 
 
 def test_create_playlist_maps_vuio_error_to_502():
@@ -133,6 +148,8 @@ if __name__ == "__main__":
     test_retry_failed_endpoint_resets_failed_tracks()
     test_preview_preset_mode()
     test_preview_unknown_seed_returns_404()
+    test_preview_smart_mode_requires_mood_prompt()
+    test_preview_smart_mode_ranks_by_vibe()
     test_create_playlist_maps_vuio_error_to_502()
     test_create_playlist_success()
     test_renderers_endpoint()

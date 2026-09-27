@@ -10,9 +10,13 @@ from pydantic import BaseModel
 import db
 import presets
 import similarity
+import typesafe_client
 import vuio_client
 
 DB_PATH = os.environ.get("DB_PATH", "/data/library.db")
+# ponytail: caps Jev API calls (and cost) per smart preview; raise if the
+# candidate pool ever needs to be broader than the BPM/key/embedding shortlist.
+MAX_SMART_CANDIDATES = 150
 
 
 @asynccontextmanager
@@ -31,6 +35,7 @@ class PreviewRequest(BaseModel):
     mode: str
     preset_name: Optional[str] = None
     seed_path: Optional[str] = None
+    mood_prompt: Optional[str] = None
     limit: int = 30
 
 
@@ -84,6 +89,20 @@ def preview_playlist(req: PreviewRequest):
         if seed is None:
             raise HTTPException(status_code=404, detail=f"Seed-Track nicht gefunden: {req.seed_path}")
         matches = similarity.top_similar(seed, tracks, limit=req.limit)
+    elif req.mode == "smart":
+        if not req.mood_prompt:
+            raise HTTPException(status_code=400, detail="mood_prompt fehlt")
+        if req.seed_path:
+            seed = next((t for t in tracks if t["path"] == req.seed_path), None)
+            if seed is None:
+                raise HTTPException(status_code=404, detail=f"Seed-Track nicht gefunden: {req.seed_path}")
+            candidates = similarity.top_similar(seed, tracks, limit=MAX_SMART_CANDIDATES)
+        else:
+            candidates = tracks[:MAX_SMART_CANDIDATES]
+        try:
+            matches = typesafe_client.rank_by_vibe(req.mood_prompt, candidates, limit=req.limit)
+        except typesafe_client.TypesafeError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
     else:
         raise HTTPException(status_code=400, detail=f"Unbekannter Modus: {req.mode}")
 

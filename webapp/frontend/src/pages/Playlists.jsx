@@ -17,6 +17,7 @@ export default function Playlists() {
   const [seedQuery, setSeedQuery] = useState("");
   const [seedResults, setSeedResults] = useState([]);
   const [seedPath, setSeedPath] = useState("");
+  const [moodPrompt, setMoodPrompt] = useState("");
   const [preview, setPreview] = useState([]);
   const [playlistName, setPlaylistName] = useState("");
   const [playlistId, setPlaylistId] = useState(null);
@@ -60,7 +61,12 @@ export default function Playlists() {
   const runPreview = async () => {
     setError(null);
     try {
-      const body = mode === "preset" ? { mode, preset_name: presetName } : { mode, seed_path: seedPath };
+      const body =
+        mode === "preset"
+          ? { mode, preset_name: presetName }
+          : mode === "smart"
+          ? { mode, seed_path: seedPath || undefined, mood_prompt: moodPrompt }
+          : { mode, seed_path: seedPath };
       const result = await previewPlaylist(body);
       setPreview(result.tracks);
     } catch (e) {
@@ -102,18 +108,23 @@ export default function Playlists() {
         <label>
           <input type="radio" checked={mode === "seed"} onChange={() => setMode("seed")} /> Seed-Track
         </label>
+        <label>
+          <input type="radio" checked={mode === "smart"} onChange={() => setMode("smart")} /> Smart (Vibe)
+        </label>
 
-        {mode === "preset" ? (
+        {mode === "preset" && (
           <select value={presetName} onChange={(e) => setPresetName(e.target.value)}>
             {Object.keys(presets).map((name) => (
               <option key={name} value={name}>{name}</option>
             ))}
           </select>
-        ) : (
+        )}
+
+        {(mode === "seed" || mode === "smart") && (
           <div>
             <input
               type="text"
-              placeholder="Track suchen..."
+              placeholder={mode === "smart" ? "Optional: Seed-Track suchen..." : "Track suchen..."}
               value={seedQuery}
               onChange={(e) => searchSeed(e.target.value)}
             />
@@ -135,6 +146,16 @@ export default function Playlists() {
             </ul>
           </div>
         )}
+
+        {mode === "smart" && (
+          <input
+            type="text"
+            placeholder="Beschreibe die Stimmung, z.B. 'entspannter Sonntagmorgen'"
+            value={moodPrompt}
+            onChange={(e) => setMoodPrompt(e.target.value)}
+          />
+        )}
+
         <button onClick={runPreview}>Vorschau erzeugen</button>
       </div>
 

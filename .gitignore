@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 data/
 *.db
+.env
 .superpowers/
 node_modules/
 dist/

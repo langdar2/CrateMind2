@@ -28,4 +28,5 @@ services:
       - DB_PATH=/data/library.db
       - VUIO_BASE_URL=http://192.168.0.3:8080
       - VUIO_MUSIC_DIR=/Volumes/Platte/Musik
+      - TYPESAFE_API_KEY=${TYPESAFE_API_KEY}
     restart: unless-stopped
