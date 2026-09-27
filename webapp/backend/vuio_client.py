@@ -7,6 +7,19 @@ VUIO_BASE_URL = os.environ.get("VUIO_BASE_URL", "http://localhost:8080")
 VUIO_TOKEN = os.environ.get("VUIO_TOKEN")
 PROTOCOL_VERSION = "2026-07-28"
 
+# Paths are stored in our DB using the analysis container's mount (MUSIC_DIR,
+# e.g. /music), but VUIO indexes the same files under their real host path.
+# ponytail: single prefix swap; switch to a real path-mapping table if VUIO
+# ever sees multiple music roots.
+MUSIC_DIR = os.environ.get("MUSIC_DIR", "/music")
+VUIO_MUSIC_DIR = os.environ.get("VUIO_MUSIC_DIR", MUSIC_DIR)
+
+
+def to_vuio_path(path: str) -> str:
+    if VUIO_MUSIC_DIR != MUSIC_DIR and path.startswith(MUSIC_DIR + "/"):
+        return VUIO_MUSIC_DIR + path[len(MUSIC_DIR):]
+    return path
+
 
 class VuioError(Exception):
     pass
@@ -63,18 +76,19 @@ def list_renderers() -> list:
 
 
 def find_file_id(path: str) -> int:
-    filename = path.rsplit("/", 1)[-1]
+    vuio_path = to_vuio_path(path)
+    filename = vuio_path.rsplit("/", 1)[-1]
     # ponytail: one search_media call per track; fine for typical playlist
     # sizes (<100 tracks), batch if that ever becomes the bottleneck.
     results = _call_tool("search_media", {"query": filename, "category": "audio", "limit": 10})
     try:
         files = results["files"]
         for f in files:
-            if f["path"] == path:
+            if f["path"] == vuio_path:
                 return f["id"]
     except (KeyError, TypeError) as e:
         raise VuioError(f"unexpected response shape from VuIO for tool 'search_media': {e}") from e
-    raise VuioError(f"Track not found in VuIO library: {path}")
+    raise VuioError(f"Track not found in VuIO library: {vuio_path}")
 
 
 def create_playlist(name: str, track_paths: list) -> int:
