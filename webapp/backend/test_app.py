@@ -49,6 +49,13 @@ def test_tracks_search_endpoint():
     assert response.json()["tracks"][0]["path"] == "/music/a.mp3"
 
 
+def test_preview_manual_mode_filters_by_criteria():
+    with TestClient(app_module.app) as client:
+        response = client.post("/api/playlists/preview", json={"mode": "manual", "criteria": {"min_bpm": 200}})
+    assert response.status_code == 200
+    assert response.json()["tracks"] == []
+
+
 def test_preview_prompt_mode():
     with patch.object(omlx_client, "parse_prompt_to_criteria", return_value={"min_danceability": 0.5}):
         with TestClient(app_module.app) as client:
@@ -77,7 +84,11 @@ def test_preview_smart_mode_requires_mood_prompt():
 
 
 def test_preview_smart_mode_ranks_by_vibe():
-    with patch.object(typesafe_client, "rank_by_vibe", return_value=[{"path": "/music/a.mp3", "bpm": 120.0, "key": "C major"}]):
+    with patch.object(typesafe_client, "rank_by_vibe", return_value=[{
+        "path": "/music/a.mp3", "bpm": 120.0, "key": "C major",
+        "danceability": 0.9, "mood_happy": 0.8, "mood_aggressive": 0.1,
+        "mood_relaxed": 0.2, "mood_party": 0.7,
+    }]):
         with TestClient(app_module.app) as client:
             response = client.post("/api/playlists/preview", json={"mode": "smart", "mood_prompt": "chill sunday"})
     assert response.status_code == 200
@@ -148,6 +159,7 @@ if __name__ == "__main__":
     test_failed_tracks_endpoint()
     test_failed_tracks_endpoint_filters_by_query()
     test_retry_failed_endpoint_resets_failed_tracks()
+    test_preview_manual_mode_filters_by_criteria()
     test_preview_prompt_mode()
     test_preview_prompt_mode_maps_omlx_error_to_502()
     test_preview_unknown_seed_returns_404()

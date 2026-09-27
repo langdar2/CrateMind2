@@ -8,14 +8,31 @@ import {
   searchTracks,
 } from "../api.js";
 
+const MODES = [
+  { id: "manual", label: "Manuell" },
+  { id: "prompt", label: "Prompt" },
+  { id: "seed", label: "Seed-Track" },
+  { id: "smart", label: "Smart (Vibe)" },
+];
+
+const MOOD_FIELDS = [
+  { key: "danceability", label: "Danceability" },
+  { key: "mood_happy", label: "Happy" },
+  { key: "mood_aggressive", label: "Aggressive" },
+  { key: "mood_relaxed", label: "Relaxed" },
+  { key: "mood_party", label: "Party" },
+];
+
 export default function Playlists() {
   const [hasTracks, setHasTracks] = useState(null);
-  const [mode, setMode] = useState("prompt");
+  const [mode, setMode] = useState("manual");
   const [prompt, setPrompt] = useState("");
   const [seedQuery, setSeedQuery] = useState("");
   const [seedResults, setSeedResults] = useState([]);
   const [seedPath, setSeedPath] = useState("");
   const [moodPrompt, setMoodPrompt] = useState("");
+  const [bpmRange, setBpmRange] = useState([80, 160]);
+  const [moodMins, setMoodMins] = useState({});
   const [preview, setPreview] = useState([]);
   const [playlistName, setPlaylistName] = useState("");
   const [playlistId, setPlaylistId] = useState(null);
@@ -52,20 +69,49 @@ export default function Playlists() {
     }
   };
 
-  const runPreview = async () => {
+  const manualCriteria = () => {
+    const criteria = { min_bpm: bpmRange[0], max_bpm: bpmRange[1] };
+    for (const [key, value] of Object.entries(moodMins)) {
+      criteria[`min_${key}`] = value;
+    }
+    return criteria;
+  };
+
+  const runPreview = async (body) => {
     setError(null);
     try {
-      const body =
-        mode === "prompt"
-          ? { mode, prompt }
-          : mode === "smart"
-          ? { mode, seed_path: seedPath || undefined, mood_prompt: moodPrompt }
-          : { mode, seed_path: seedPath };
-      const result = await previewPlaylist(body);
+      const result = await previewPlaylist(
+        body ||
+          (mode === "manual"
+            ? { mode, criteria: manualCriteria() }
+            : mode === "prompt"
+            ? { mode, prompt }
+            : mode === "smart"
+            ? { mode, seed_path: seedPath || undefined, mood_prompt: moodPrompt }
+            : { mode, seed_path: seedPath })
+      );
       setPreview(result.tracks);
     } catch (e) {
       setError(e.message);
     }
+  };
+
+  // ponytail: manual mode is free (no LLM/API cost), so auto-preview on every
+  // slider change with a short debounce; other modes keep the explicit button.
+  useEffect(() => {
+    if (mode !== "manual" || hasTracks !== true) return;
+    const timer = setTimeout(() => runPreview({ mode, criteria: manualCriteria() }), 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, hasTracks, bpmRange, moodMins]);
+
+  const toggleMoodField = (key, checked) => {
+    setMoodMins((prev) => {
+      const next = { ...prev };
+      if (checked) next[key] = 0.5;
+      else delete next[key];
+      return next;
+    });
   };
 
   const removeTrack = (path) => setPreview(preview.filter((t) => t.path !== path));
@@ -96,15 +142,62 @@ export default function Playlists() {
 
       <div className="tile">
         <h3>Playlist generieren</h3>
-        <label>
-          <input type="radio" checked={mode === "prompt"} onChange={() => setMode("prompt")} /> Prompt (lokales LLM)
-        </label>
-        <label>
-          <input type="radio" checked={mode === "seed"} onChange={() => setMode("seed")} /> Seed-Track
-        </label>
-        <label>
-          <input type="radio" checked={mode === "smart"} onChange={() => setMode("smart")} /> Smart (Vibe)
-        </label>
+        <div className="segmented">
+          {MODES.map((m) => (
+            <button
+              key={m.id}
+              className={mode === m.id ? "active" : ""}
+              onClick={() => setMode(m.id)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        {mode === "manual" && (
+          <div className="field-list" style={{ marginTop: "12px" }}>
+            <div className="slider-row">
+              <span className="label">BPM</span>
+              <input
+                type="range"
+                min="40"
+                max="200"
+                value={bpmRange[0]}
+                onChange={(e) => setBpmRange([Math.min(+e.target.value, bpmRange[1]), bpmRange[1]])}
+              />
+              <input
+                type="range"
+                min="40"
+                max="200"
+                value={bpmRange[1]}
+                onChange={(e) => setBpmRange([bpmRange[0], Math.max(+e.target.value, bpmRange[0])])}
+              />
+              <span className="slider-value">{bpmRange[0]}–{bpmRange[1]}</span>
+            </div>
+            {MOOD_FIELDS.map((f) => (
+              <div className="slider-row" key={f.key}>
+                <label className="label">
+                  <input
+                    type="checkbox"
+                    checked={f.key in moodMins}
+                    onChange={(e) => toggleMoodField(f.key, e.target.checked)}
+                  />{" "}
+                  {f.label}
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  disabled={!(f.key in moodMins)}
+                  value={moodMins[f.key] ?? 0.5}
+                  onChange={(e) => setMoodMins((prev) => ({ ...prev, [f.key]: +e.target.value }))}
+                />
+                <span className="slider-value">{f.key in moodMins ? `≥ ${moodMins[f.key].toFixed(2)}` : "—"}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {mode === "prompt" && (
           <input
@@ -151,7 +244,7 @@ export default function Playlists() {
           />
         )}
 
-        <button onClick={runPreview}>Vorschau erzeugen</button>
+        {mode !== "manual" && <button onClick={() => runPreview()}>Vorschau erzeugen</button>}
       </div>
 
       {preview.length > 0 && (
@@ -160,7 +253,14 @@ export default function Playlists() {
           <ul>
             {preview.map((t, i) => (
               <li key={t.path} className="card-row">
-                <span className="path">{t.path} ({t.bpm ? t.bpm.toFixed(0) : "?"} BPM, {t.key})</span>
+                <span className="path">
+                  {t.path}
+                  <span className="chips">
+                    <span className="chip">{t.bpm ? t.bpm.toFixed(0) : "?"} BPM</span>
+                    <span className="chip">{t.key}</span>
+                    {t.danceability != null && <span className="chip">Dance {t.danceability.toFixed(2)}</span>}
+                  </span>
+                </span>
                 <span style={{ display: "flex", gap: "4px" }}>
                   <button onClick={() => moveTrack(i, -1)} disabled={i === 0}>↑</button>
                   <button onClick={() => moveTrack(i, 1)} disabled={i === preview.length - 1}>↓</button>

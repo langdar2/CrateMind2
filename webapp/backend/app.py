@@ -37,6 +37,7 @@ class PreviewRequest(BaseModel):
     prompt: Optional[str] = None
     seed_path: Optional[str] = None
     mood_prompt: Optional[str] = None
+    criteria: Optional[dict] = None
     limit: int = 30
 
 
@@ -76,7 +77,9 @@ def preview_playlist(req: PreviewRequest):
     if not tracks:
         raise HTTPException(status_code=404, detail="Keine analysierten Tracks vorhanden")
 
-    if req.mode == "prompt":
+    if req.mode == "manual":
+        matches = presets.filter_by_criteria(tracks, req.criteria or {}, limit=req.limit)
+    elif req.mode == "prompt":
         if not req.prompt:
             raise HTTPException(status_code=400, detail="prompt fehlt")
         try:
@@ -106,7 +109,15 @@ def preview_playlist(req: PreviewRequest):
     else:
         raise HTTPException(status_code=400, detail=f"Unbekannter Modus: {req.mode}")
 
-    return {"tracks": [{"path": t["path"], "bpm": t["bpm"], "key": t["key"]} for t in matches]}
+    return {"tracks": [
+        {
+            "path": t["path"], "bpm": t["bpm"], "key": t["key"],
+            "danceability": t["danceability"], "mood_happy": t["mood_happy"],
+            "mood_aggressive": t["mood_aggressive"], "mood_relaxed": t["mood_relaxed"],
+            "mood_party": t["mood_party"],
+        }
+        for t in matches
+    ]}
 
 
 @app.post("/api/playlists")
