@@ -31,6 +31,7 @@ def _make_test_db():
 os.environ["DB_PATH"] = _make_test_db()
 
 import app as app_module
+import omlx_client
 import typesafe_client
 import vuio_client
 
@@ -42,23 +43,25 @@ def test_stats_endpoint_returns_counts():
     assert response.json()["status_counts"]["ok"] == 1
 
 
-def test_presets_endpoint_lists_presets():
-    with TestClient(app_module.app) as client:
-        response = client.get("/api/presets")
-    assert "workout" in response.json()
-
-
 def test_tracks_search_endpoint():
     with TestClient(app_module.app) as client:
         response = client.get("/api/tracks", params={"q": "a.mp3"})
     assert response.json()["tracks"][0]["path"] == "/music/a.mp3"
 
 
-def test_preview_preset_mode():
-    with TestClient(app_module.app) as client:
-        response = client.post("/api/playlists/preview", json={"mode": "preset", "preset_name": "party"})
+def test_preview_prompt_mode():
+    with patch.object(omlx_client, "parse_prompt_to_criteria", return_value={"min_danceability": 0.5}):
+        with TestClient(app_module.app) as client:
+            response = client.post("/api/playlists/preview", json={"mode": "prompt", "prompt": "party"})
     assert response.status_code == 200
     assert response.json()["tracks"][0]["path"] == "/music/a.mp3"
+
+
+def test_preview_prompt_mode_maps_omlx_error_to_502():
+    with patch.object(omlx_client, "parse_prompt_to_criteria", side_effect=omlx_client.OmlxError("down")):
+        with TestClient(app_module.app) as client:
+            response = client.post("/api/playlists/preview", json={"mode": "prompt", "prompt": "party"})
+    assert response.status_code == 502
 
 
 def test_preview_unknown_seed_returns_404():
@@ -141,12 +144,12 @@ def test_retry_failed_endpoint_resets_failed_tracks():
 
 if __name__ == "__main__":
     test_stats_endpoint_returns_counts()
-    test_presets_endpoint_lists_presets()
     test_tracks_search_endpoint()
     test_failed_tracks_endpoint()
     test_failed_tracks_endpoint_filters_by_query()
     test_retry_failed_endpoint_resets_failed_tracks()
-    test_preview_preset_mode()
+    test_preview_prompt_mode()
+    test_preview_prompt_mode_maps_omlx_error_to_502()
     test_preview_unknown_seed_returns_404()
     test_preview_smart_mode_requires_mood_prompt()
     test_preview_smart_mode_ranks_by_vibe()

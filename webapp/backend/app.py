@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import db
+import omlx_client
 import presets
 import similarity
 import typesafe_client
@@ -33,7 +34,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 class PreviewRequest(BaseModel):
     mode: str
-    preset_name: Optional[str] = None
+    prompt: Optional[str] = None
     seed_path: Optional[str] = None
     mood_prompt: Optional[str] = None
     limit: int = 30
@@ -51,11 +52,6 @@ class CastRequest(BaseModel):
 @app.get("/api/stats")
 def get_stats():
     return db.fetch_stats(app.state.conn)
-
-
-@app.get("/api/presets")
-def get_presets():
-    return presets.PRESETS
 
 
 @app.get("/api/tracks")
@@ -80,10 +76,14 @@ def preview_playlist(req: PreviewRequest):
     if not tracks:
         raise HTTPException(status_code=404, detail="Keine analysierten Tracks vorhanden")
 
-    if req.mode == "preset":
-        if req.preset_name not in presets.PRESETS:
-            raise HTTPException(status_code=400, detail=f"Unbekanntes Preset: {req.preset_name}")
-        matches = presets.filter_tracks(tracks, req.preset_name, limit=req.limit)
+    if req.mode == "prompt":
+        if not req.prompt:
+            raise HTTPException(status_code=400, detail="prompt fehlt")
+        try:
+            criteria = omlx_client.parse_prompt_to_criteria(req.prompt)
+        except omlx_client.OmlxError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+        matches = presets.filter_by_criteria(tracks, criteria, limit=req.limit)
     elif req.mode == "seed":
         seed = next((t for t in tracks if t["path"] == req.seed_path), None)
         if seed is None:

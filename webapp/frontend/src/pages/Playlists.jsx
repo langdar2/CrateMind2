@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   getStats,
-  getPresets,
   previewPlaylist,
   createPlaylist,
   getRenderers,
@@ -11,9 +10,8 @@ import {
 
 export default function Playlists() {
   const [hasTracks, setHasTracks] = useState(null);
-  const [presets, setPresets] = useState({});
-  const [mode, setMode] = useState("preset");
-  const [presetName, setPresetName] = useState("");
+  const [mode, setMode] = useState("prompt");
+  const [prompt, setPrompt] = useState("");
   const [seedQuery, setSeedQuery] = useState("");
   const [seedResults, setSeedResults] = useState([]);
   const [seedPath, setSeedPath] = useState("");
@@ -27,10 +25,6 @@ export default function Playlists() {
 
   useEffect(() => {
     getStats().then((s) => setHasTracks((s.status_counts.ok || 0) > 0));
-    getPresets().then((p) => {
-      setPresets(p);
-      setPresetName(Object.keys(p)[0] || "");
-    });
   }, []);
 
   const moveTrack = (index, direction) => {
@@ -62,8 +56,8 @@ export default function Playlists() {
     setError(null);
     try {
       const body =
-        mode === "preset"
-          ? { mode, preset_name: presetName }
+        mode === "prompt"
+          ? { mode, prompt }
           : mode === "smart"
           ? { mode, seed_path: seedPath || undefined, mood_prompt: moodPrompt }
           : { mode, seed_path: seedPath };
@@ -103,7 +97,7 @@ export default function Playlists() {
       <div className="tile">
         <h3>Playlist generieren</h3>
         <label>
-          <input type="radio" checked={mode === "preset"} onChange={() => setMode("preset")} /> Preset
+          <input type="radio" checked={mode === "prompt"} onChange={() => setMode("prompt")} /> Prompt (lokales LLM)
         </label>
         <label>
           <input type="radio" checked={mode === "seed"} onChange={() => setMode("seed")} /> Seed-Track
@@ -112,12 +106,13 @@ export default function Playlists() {
           <input type="radio" checked={mode === "smart"} onChange={() => setMode("smart")} /> Smart (Vibe)
         </label>
 
-        {mode === "preset" && (
-          <select value={presetName} onChange={(e) => setPresetName(e.target.value)}>
-            {Object.keys(presets).map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
+        {mode === "prompt" && (
+          <input
+            type="text"
+            placeholder="z.B. 'energiegeladenes Workout' oder 'entspannter Sonntagmorgen'"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
         )}
 
         {(mode === "seed" || mode === "smart") && (

@@ -1,22 +1,12 @@
-PRESETS = {
-    "workout": {"min_bpm": 120, "min_danceability": 0.6},
-    "chill": {"max_bpm": 100, "min_mood_relaxed": 0.5},
-    "party": {"min_danceability": 0.6, "min_mood_party": 0.5},
-}
+_COLUMNS = ["bpm", "danceability", "mood_happy", "mood_aggressive", "mood_relaxed", "mood_party"]
 
-_THRESHOLD_CHECKS = {
-    "min_bpm": lambda track, value: track["bpm"] is not None and track["bpm"] >= value,
-    "max_bpm": lambda track, value: track["bpm"] is not None and track["bpm"] <= value,
-    "min_danceability": lambda track, value: track["danceability"] is not None and track["danceability"] >= value,
-    "min_mood_party": lambda track, value: track["mood_party"] is not None and track["mood_party"] >= value,
-    "min_mood_relaxed": lambda track, value: track["mood_relaxed"] is not None and track["mood_relaxed"] >= value,
-}
+_THRESHOLD_CHECKS = {}
+for _col in _COLUMNS:
+    _THRESHOLD_CHECKS[f"min_{_col}"] = (lambda c: lambda track, value: track[c] is not None and track[c] >= value)(_col)
+    _THRESHOLD_CHECKS[f"max_{_col}"] = (lambda c: lambda track, value: track[c] is not None and track[c] <= value)(_col)
 
 
-def filter_tracks(tracks: list, preset_name: str, limit: int = 30) -> list:
-    preset = PRESETS[preset_name]
-    matches = [
-        track for track in tracks
-        if all(_THRESHOLD_CHECKS[key](track, value) for key, value in preset.items())
-    ]
+def filter_by_criteria(tracks: list, criteria: dict, limit: int = 30) -> list:
+    checks = [(_THRESHOLD_CHECKS[key], value) for key, value in criteria.items() if key in _THRESHOLD_CHECKS]
+    matches = [track for track in tracks if all(check(track, value) for check, value in checks)]
     return matches[:limit]
