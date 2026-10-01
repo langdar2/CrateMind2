@@ -124,10 +124,10 @@ export default function Dashboard() {
         <h3>BPM-Verteilung</h3>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={stats.bpm_histogram}>
-            <XAxis dataKey="bucket" stroke="#7c7c94" />
-            <YAxis stroke="#7c7c94" />
-            <Tooltip contentStyle={{ background: "#161227", border: "1px solid rgba(255,255,255,0.1)" }} />
-            <Bar dataKey="count" fill="#7c5cff" radius={[4, 4, 0, 0]} />
+            <XAxis dataKey="bucket" stroke="#9999cc" />
+            <YAxis stroke="#9999cc" />
+            <Tooltip contentStyle={{ background: "#000000", border: "2px solid #ff9966" }} />
+            <Bar dataKey="count" fill="#ff9966" radius={[0, 0, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -136,9 +136,9 @@ export default function Dashboard() {
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={keyData}>
             <XAxis dataKey="key" hide />
-            <YAxis stroke="#7c7c94" />
-            <Tooltip contentStyle={{ background: "#161227", border: "1px solid rgba(255,255,255,0.1)" }} />
-            <Bar dataKey="count" fill="#5ce1ff" radius={[4, 4, 0, 0]} />
+            <YAxis stroke="#9999cc" />
+            <Tooltip contentStyle={{ background: "#000000", border: "2px solid #ff9966" }} />
+            <Bar dataKey="count" fill="#99ccff" radius={[0, 0, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
