@@ -60,6 +60,11 @@ def search_tracks(q: str = "", limit: int = 20):
     return {"tracks": db.search_ok_tracks(app.state.conn, q, limit)}
 
 
+@app.get("/api/tracks/recent")
+def get_recent_tracks(limit: int = 10):
+    return {"tracks": db.recent_ok_tracks(app.state.conn, limit)}
+
+
 @app.get("/api/tracks/failed")
 def get_failed_tracks(q: str = "", limit: int = 50, offset: int = 0):
     return db.search_failed_tracks(app.state.conn, query=q, limit=limit, offset=offset)

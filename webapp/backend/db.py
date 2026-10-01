@@ -73,6 +73,28 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
     return tracks
 
 
+def recent_ok_tracks(conn: sqlite3.Connection, limit: int = 10) -> list:
+    rows = conn.execute(
+        """
+        SELECT t.path, f.bpm, f.key, f.mood_happy, f.mood_aggressive, f.mood_relaxed,
+               f.mood_party, f.danceability, t.last_scanned
+        FROM tracks t JOIN features f ON f.path = t.path
+        WHERE t.status = 'ok'
+        ORDER BY t.last_scanned DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [
+        {
+            "path": path, "bpm": bpm, "key": key, "mood_happy": happy,
+            "mood_aggressive": aggressive, "mood_relaxed": relaxed, "mood_party": party,
+            "danceability": dance, "analyzed_at": last_scanned,
+        }
+        for path, bpm, key, happy, aggressive, relaxed, party, dance, last_scanned in rows
+    ]
+
+
 def search_ok_tracks(conn: sqlite3.Connection, query: str, limit: int = 20) -> list:
     like = f"%{query}%"
     rows = conn.execute(

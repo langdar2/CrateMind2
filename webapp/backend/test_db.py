@@ -64,6 +64,16 @@ def test_load_ok_tracks_returns_only_ok_with_embedding():
     assert a["bpm"] == 120.0
 
 
+def test_recent_ok_tracks_orders_by_last_scanned_desc():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+
+    recent = db.recent_ok_tracks(conn, limit=10)
+
+    assert [t["path"] for t in recent] == ["/music/b.mp3", "/music/a.mp3"]
+    assert recent[0]["bpm"] == 90.0
+
+
 def test_search_ok_tracks_matches_substring():
     path = _make_test_db()
     conn = db.get_connection(path)
@@ -136,6 +146,7 @@ def test_retry_failed_tracks_resets_status_and_clears_error():
 if __name__ == "__main__":
     test_fetch_stats_counts_status_and_aggregates()
     test_load_ok_tracks_returns_only_ok_with_embedding()
+    test_recent_ok_tracks_orders_by_last_scanned_desc()
     test_search_ok_tracks_matches_substring()
     test_search_failed_tracks_returns_error_message_and_total()
     test_search_failed_tracks_filters_by_query()

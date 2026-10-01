@@ -49,6 +49,13 @@ def test_tracks_search_endpoint():
     assert response.json()["tracks"][0]["path"] == "/music/a.mp3"
 
 
+def test_recent_tracks_endpoint():
+    with TestClient(app_module.app) as client:
+        response = client.get("/api/tracks/recent")
+    assert response.status_code == 200
+    assert response.json()["tracks"][0]["path"] == "/music/a.mp3"
+
+
 def test_preview_manual_mode_filters_by_criteria():
     with TestClient(app_module.app) as client:
         response = client.post("/api/playlists/preview", json={"mode": "manual", "criteria": {"min_bpm": 200}})
@@ -156,6 +163,7 @@ def test_retry_failed_endpoint_resets_failed_tracks():
 if __name__ == "__main__":
     test_stats_endpoint_returns_counts()
     test_tracks_search_endpoint()
+    test_recent_tracks_endpoint()
     test_failed_tracks_endpoint()
     test_failed_tracks_endpoint_filters_by_query()
     test_retry_failed_endpoint_resets_failed_tracks()

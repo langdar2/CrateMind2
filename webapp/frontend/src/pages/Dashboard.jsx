@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { getStats, getFailedTracks, retryFailedTracks } from "../api.js";
+import { getStats, getFailedTracks, retryFailedTracks, getRecentTracks } from "../api.js";
 import { useInterval } from "../hooks.js";
 
 const PAGE_SIZE = 50;
 const POLL_MS = 3000;
+const TICKER_MS = 2500;
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
@@ -15,9 +16,12 @@ export default function Dashboard() {
   const [failedTotal, setFailedTotal] = useState(0);
   const [failedError, setFailedError] = useState(null);
   const [retrying, setRetrying] = useState(false);
+  const [recentTracks, setRecentTracks] = useState([]);
+  const [tickerIndex, setTickerIndex] = useState(0);
 
   useEffect(() => {
     getStats().then(setStats).catch((e) => setError(e.message));
+    getRecentTracks(8).then((r) => setRecentTracks(r.tracks)).catch(() => {});
   }, []);
 
   const pending = stats ? stats.status_counts.pending || 0 : undefined;
@@ -26,6 +30,17 @@ export default function Dashboard() {
       getStats().then(setStats).catch(() => {});
     },
     pending === undefined || pending > 0 ? POLL_MS : null
+  );
+
+  // ponytail: reuse the same poll cadence to refresh "recently analyzed" tracks,
+  // then cycle through them locally for the ticker animation - no websocket needed.
+  useInterval(() => {
+    getRecentTracks(8).then((r) => setRecentTracks(r.tracks)).catch(() => {});
+  }, POLL_MS);
+
+  useInterval(
+    () => setTickerIndex((i) => (i + 1) % recentTracks.length),
+    recentTracks.length > 1 ? TICKER_MS : null
   );
 
   const loadFailed = (q, offset, append) => {
@@ -71,6 +86,7 @@ export default function Dashboard() {
   const progressPct = total > 0 ? Math.round(((total - (counts.pending || 0)) / total) * 100) : 0;
 
   const keyData = Object.entries(stats.key_counts).map(([key, count]) => ({ key, count }));
+  const tickerTrack = recentTracks.length > 0 ? recentTracks[tickerIndex % recentTracks.length] : null;
 
   return (
     <div className="tile-grid">
@@ -81,6 +97,21 @@ export default function Dashboard() {
         <div className="progress-bar">
           <div className="progress-bar-fill" style={{ width: `${progressPct}%` }} />
         </div>
+        {tickerTrack && (
+          <div className="ticker" key={tickerTrack.path}>
+            <span className="ticker-path">{tickerTrack.path.split("/").pop()}</span>
+            <span className="chips">
+              <span className="chip">{tickerTrack.bpm ? tickerTrack.bpm.toFixed(0) : "?"} BPM</span>
+              <span className="chip">{tickerTrack.key}</span>
+              {tickerTrack.danceability != null && (
+                <span className="chip">Dance {tickerTrack.danceability.toFixed(2)}</span>
+              )}
+              {tickerTrack.mood_happy != null && (
+                <span className="chip">Happy {tickerTrack.mood_happy.toFixed(2)}</span>
+              )}
+            </span>
+          </div>
+        )}
         <ul className="field-list">
           {Object.entries(counts).map(([status, count]) => (
             <li key={status} className="field">
