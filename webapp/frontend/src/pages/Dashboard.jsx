@@ -93,6 +93,7 @@ export default function Dashboard() {
       <div className="tile">
         <h3 onClick={() => setExpanded(!expanded)} style={{ cursor: "pointer" }}>
           Analyse-Fortschritt {expanded ? "▾" : "▸"}
+          {pending > 0 && <span className="standby-light" />}
         </h3>
         <div className="progress-bar">
           <div className="progress-bar-fill" style={{ width: `${progressPct}%` }} />

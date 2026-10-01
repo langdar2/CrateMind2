@@ -143,6 +143,8 @@ main {
 }
 
 .tile h3 {
+  position: relative;
+  overflow: hidden;
   margin-top: 0;
   display: inline-block;
   background: var(--lcars-orange);
@@ -150,6 +152,41 @@ main {
   padding: 4px 16px;
   border-radius: 999px;
   font-size: 15px;
+}
+
+.tile h3::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: scan-sweep 3s linear infinite;
+}
+
+@keyframes scan-sweep {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.standby-light {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--lcars-gold);
+  margin-left: 8px;
+  vertical-align: middle;
+  animation: breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.3; box-shadow: 0 0 2px var(--lcars-gold); }
+  50% { opacity: 1; box-shadow: 0 0 8px 2px var(--lcars-gold); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile h3::after { animation: none; }
+  .standby-light { animation: none; opacity: 1; }
 }
 
 .progress-bar {
