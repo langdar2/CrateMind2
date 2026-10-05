@@ -46,6 +46,27 @@ def stem_of(path: str) -> str:
     return norm(TRACK_NUMBER.sub("", name))
 
 
+def stems_of(path: str) -> list:
+    """Candidate title keys for a filename, best guess first.
+
+    Filenames come in several shapes ("Title", "Artist - Title",
+    "Artist - Album - Title"), so emit the whole stem plus whatever follows
+    each " - " and let the index decide which one is a real title.
+    """
+    name = TRACK_NUMBER.sub("", Path(path).stem)
+    candidates = [name]
+    if " - " in name:
+        candidates.append(name.split(" - ", 1)[1])
+        candidates.append(name.rsplit(" - ", 1)[1])
+    seen, out = set(), []
+    for c in candidates:
+        key = norm(c)
+        if key and key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out
+
+
 def build_index(apple_tracks: list) -> dict:
     """title_key -> [(artist_key, [tracks])].
 
@@ -77,16 +98,20 @@ def match(haystack: str, stem: str, index: dict):
     Returns (tracks, status) where status is "matched", "artist_mismatch" or
     "no_title", and tracks is the full duplicate group.
     """
-    candidates = index.get(stem)
-    if not candidates:
-        return None, "no_title"
-    for artist_key, tracks in candidates:
-        if artist_key and artist_key in haystack:
-            return tracks, "matched"
-    # Title is unique in the library, so accept it even without artist confirmation.
-    if len(candidates) == 1:
-        return candidates[0][1], "matched"
-    return None, "artist_mismatch"
+    stems = [stem] if isinstance(stem, str) else list(stem)
+    status = "no_title"
+    for s in stems:
+        candidates = index.get(s)
+        if not candidates:
+            continue
+        for artist_key, tracks in candidates:
+            if artist_key and artist_key in haystack:
+                return tracks, "matched"
+        # Title is unique in the library, so accept it without artist confirmation.
+        if len(candidates) == 1:
+            return candidates[0][1], "matched"
+        status = "artist_mismatch"
+    return None, status
 
 
 def report(results: dict, total: int, label: str, samples: list) -> None:
@@ -112,7 +137,7 @@ def probe_db(db_path: str, index: dict) -> None:
     results = defaultdict(int)
     unmatched = []
     for path in paths:
-        _, status = match(norm(path), stem_of(path), index)
+        _, status = match(norm(path), stems_of(path), index)
         results[status] += 1
         if status != "matched":
             unmatched.append(path)
@@ -147,9 +172,14 @@ def selftest(apple_tracks: list, index: dict, history_csv: str) -> None:
         {"Artist": "Nena", "Title": "99 Luftballons", "Track Play Count": 5},
     ])
     hits, status = match(norm("/music/Falco/03 Vienna Calling.mp3"),
-                         stem_of("/music/Falco/03 Vienna Calling.mp3"), dup_index)
+                         stems_of("/music/Falco/03 Vienna Calling.mp3"), dup_index)
     assert status == "matched", status
     assert sum(t["Track Play Count"] for t in hits) == 229, hits
+
+    # The real library layout: /music/Artist - Album/NN. Artist - Title.ext
+    real = "/music/Falco - Greatest Hits/03. Falco - Vienna Calling.mp3"
+    assert "viennacalling" in stems_of(real), stems_of(real)
+    assert match(norm(real), stems_of(real), dup_index)[1] == "matched"
     print("norm/stem/grouping asserts passed.")
 
     import csv
