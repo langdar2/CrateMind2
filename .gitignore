@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 data/
 *.db
+.DS_Store
+docs/Informationen zu Apple-Mediendiensten*/
 .env
 .superpowers/
 node_modules/
