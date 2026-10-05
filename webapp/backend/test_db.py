@@ -80,6 +80,37 @@ def test_load_ok_tracks_joins_preferences_and_leaves_unscored_null():
     # Never imported -> None, so it sorts out of the way instead of ranking as 0.
     assert tracks["/music/b.mp3"]["score"] is None
     assert tracks["/music/b.mp3"]["song_key"] is None
+    assert tracks["/music/b.mp3"]["percentile"] is None
+
+
+def test_percentile_ranks_scores_among_scored_tracks_only():
+    path = _make_test_db()
+    conn = analysis_db.get_connection(path)
+    for i in range(5):
+        p = f"/music/p{i}.mp3"
+        analysis_db.upsert_track(conn, p, mtime=1.0, size=100, status="ok")
+        analysis_db.upsert_features(conn, p, {
+            "bpm": 100.0, "key": "C major", "mood_happy": 0.5, "mood_aggressive": 0.5,
+            "mood_relaxed": 0.5, "mood_party": 0.5, "danceability": 0.5,
+            "embedding": np.ones(200, dtype=np.float32),
+        })
+    conn.close()
+    conn = db.get_connection(path)
+    for i in range(5):
+        conn.execute(
+            "INSERT INTO preferences (path, song_key, plays, skips, score) VALUES (?, ?, ?, ?, ?)",
+            (f"/music/p{i}.mp3", f"song{i}", 10, 0, float(i)),
+        )
+    conn.commit()
+
+    tracks = {t["path"]: t for t in db.load_ok_tracks(conn)}
+
+    # PERCENT_RANK over 5 scores: lowest 0, highest 100.
+    assert tracks["/music/p0.mp3"]["percentile"] == 0
+    assert tracks["/music/p4.mp3"]["percentile"] == 100
+    assert tracks["/music/p2.mp3"]["percentile"] == 50
+    # The unscored tracks from the fixture must not dilute the ranking.
+    assert tracks["/music/a.mp3"]["percentile"] is None
 
 
 def test_recent_ok_tracks_orders_by_last_scanned_desc():
@@ -165,6 +196,7 @@ if __name__ == "__main__":
     test_fetch_stats_counts_status_and_aggregates()
     test_load_ok_tracks_returns_only_ok_with_embedding()
     test_load_ok_tracks_joins_preferences_and_leaves_unscored_null()
+    test_percentile_ranks_scores_among_scored_tracks_only()
     test_recent_ok_tracks_orders_by_last_scanned_desc()
     test_search_ok_tracks_matches_substring()
     test_search_failed_tracks_returns_error_message_and_total()

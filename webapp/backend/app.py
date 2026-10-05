@@ -123,7 +123,7 @@ def preview_playlist(req: PreviewRequest):
             "path": t["path"], "bpm": t["bpm"], "key": t["key"],
             "danceability": t["danceability"], "mood_happy": t["mood_happy"],
             "mood_aggressive": t["mood_aggressive"], "mood_relaxed": t["mood_relaxed"],
-            "mood_party": t["mood_party"], "score": t.get("score"),
+            "mood_party": t["mood_party"], "percentile": t.get("percentile"),
         }
         for t in matches
     ]}

@@ -32,7 +32,7 @@ export default function Playlists() {
   const [seedPath, setSeedPath] = useState("");
   const [moodPrompt, setMoodPrompt] = useState("");
   const [bpmRange, setBpmRange] = useState([80, 160]);
-  const [minScore, setMinScore] = useState(0);
+  const [minPercentile, setMinPercentile] = useState(0);
   const [moodMins, setMoodMins] = useState({});
   const [preview, setPreview] = useState([]);
   const [playlistName, setPlaylistName] = useState("");
@@ -72,9 +72,9 @@ export default function Playlists() {
 
   const manualCriteria = () => {
     const criteria = { min_bpm: bpmRange[0], max_bpm: bpmRange[1] };
-    // Only send it when engaged - a min_score of 0 would still sort favourites
-    // to the top and hide everything the Apple import could not score.
-    if (minScore > 0) criteria.min_score = minScore;
+    // Only send it when engaged - a min_percentile of 0 would still sort
+    // favourites to the top and hide everything the import could not score.
+    if (minPercentile > 0) criteria.min_percentile = minPercentile;
     for (const [key, value] of Object.entries(moodMins)) {
       criteria[`min_${key}`] = value;
     }
@@ -107,7 +107,7 @@ export default function Playlists() {
     const timer = setTimeout(() => runPreview({ mode, criteria: manualCriteria() }), 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, hasTracks, bpmRange, minScore, moodMins]);
+  }, [mode, hasTracks, bpmRange, minPercentile, moodMins]);
 
   const toggleMoodField = (key, checked) => {
     setMoodMins((prev) => {
@@ -183,13 +183,15 @@ export default function Playlists() {
               <input
                 type="range"
                 min="0"
-                max="6"
-                step="0.25"
-                value={minScore}
-                onChange={(e) => setMinScore(+e.target.value)}
+                max="95"
+                step="5"
+                value={minPercentile}
+                onChange={(e) => setMinPercentile(+e.target.value)}
                 style={{ gridColumn: "2 / 4" }}
               />
-              <span className="slider-value">{minScore > 0 ? `≥ ${minScore.toFixed(2)}` : "egal"}</span>
+              <span className="slider-value">
+                {minPercentile > 0 ? `Top ${100 - minPercentile}%` : "egal"}
+              </span>
             </div>
             {MOOD_FIELDS.map((f) => (
               <div className="slider-row" key={f.key}>
@@ -276,7 +278,9 @@ export default function Playlists() {
                     <span className="chip">{t.bpm ? t.bpm.toFixed(0) : "?"} BPM</span>
                     <span className="chip">{t.key}</span>
                     {t.danceability != null && <span className="chip">Dance {t.danceability.toFixed(2)}</span>}
-                    {t.score != null && <span className="chip chip-score">Vorliebe {t.score.toFixed(1)}</span>}
+                    {t.percentile != null && (
+                      <span className="chip chip-score">Top {Math.max(1, 100 - t.percentile)}%</span>
+                    )}
                   </span>
                 </span>
                 <span style={{ display: "flex", gap: "4px" }}>

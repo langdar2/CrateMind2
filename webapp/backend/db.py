@@ -66,16 +66,20 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
     rows = conn.execute(
         """
         SELECT t.path, f.bpm, f.key, f.mood_happy, f.mood_aggressive, f.mood_relaxed,
-               f.mood_party, f.danceability, f.embedding, p.score, p.song_key
+               f.mood_party, f.danceability, f.embedding, p.score, p.song_key, p.percentile
         FROM tracks t
         JOIN features f ON f.path = t.path
-        LEFT JOIN preferences p ON p.path = t.path
+        LEFT JOIN (
+            SELECT path, song_key, score,
+                   ROUND(PERCENT_RANK() OVER (ORDER BY score) * 100) AS percentile
+            FROM preferences
+        ) p ON p.path = t.path
         WHERE t.status = 'ok' AND f.embedding IS NOT NULL
         """
     ).fetchall()
 
     tracks = []
-    for path, bpm, key, happy, aggressive, relaxed, party, dance, emb_blob, score, song_key in rows:
+    for path, bpm, key, happy, aggressive, relaxed, party, dance, emb_blob, score, song_key, percentile in rows:
         tracks.append({
             "path": path,
             "bpm": bpm,
@@ -87,7 +91,10 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
             "danceability": dance,
             # None for anything the Apple import could not score - deliberately
             # not 0.0, which would rank unplayed music below disliked music.
+            # score is the precise internal value used for ordering; percentile
+            # is its rank among scored tracks, which is what users can read.
             "score": score,
+            "percentile": percentile,
             "song_key": song_key,
             "embedding": np.frombuffer(emb_blob, dtype=np.float32),
         })

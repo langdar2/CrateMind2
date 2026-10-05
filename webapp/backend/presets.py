@@ -1,4 +1,4 @@
-_COLUMNS = ["bpm", "danceability", "mood_happy", "mood_aggressive", "mood_relaxed", "mood_party", "score"]
+_COLUMNS = ["bpm", "danceability", "mood_happy", "mood_aggressive", "mood_relaxed", "mood_party", "percentile"]
 
 _THRESHOLD_CHECKS = {}
 for _col in _COLUMNS:
@@ -29,7 +29,8 @@ def filter_by_criteria(tracks: list, criteria: dict, limit: int = 30) -> list:
     checks = [(_THRESHOLD_CHECKS[key], value) for key, value in criteria.items() if key in _THRESHOLD_CHECKS]
     matches = [track for track in tracks if all(check(track, value) for check, value in checks)]
     # Only order by taste once the caller asks for it; otherwise scored tracks
-    # would always crowd out everything the Apple export never saw.
-    if criteria.get("min_score"):
+    # would always crowd out everything the Apple export never saw. Ordering
+    # uses the raw score, which has none of the percentile's rounding ties.
+    if criteria.get("min_percentile"):
         matches.sort(key=lambda t: t["score"], reverse=True)
     return dedupe_by_song(matches)[:limit]
