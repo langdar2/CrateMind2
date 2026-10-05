@@ -19,7 +19,6 @@ import math
 import os
 import sqlite3
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -92,28 +91,23 @@ def read_tags(path: str) -> tuple:
     return artist, title
 
 
-def read_all_tags(paths: list, music_root: str, workers: int = 16) -> dict:
-    """{db_path: (artist, title)} for every path.
-
-    Each read is ~190ms of waiting on the external drive, so threads turn a
-    100-minute serial crawl into a few minutes. Pure I/O wait, no GIL contention.
-    """
-    done = 0
-
-    def one(path):
-        nonlocal done
-        result = read_tags(host_path(path, music_root))
-        done += 1
-        if done % 2000 == 0:
-            print(f"  read {done}/{len(paths)} tags", flush=True)
-        return result
-
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        return dict(zip(paths, pool.map(one, paths)))
+def _row(path: str, tracks: list):
+    """(path, song_key, plays, skips, score), or None if the song was never played."""
+    plays = sum(t.get("Track Play Count") or 0 for t in tracks)
+    if plays <= 0:
+        return None
+    skips = sum(t.get("Skip Count") or 0 for t in tracks)
+    song_key = norm(tracks[0].get("Artist") or "") + "|" + norm(tracks[0].get("Title") or "")
+    return (path, song_key, plays, skips, score_of(plays, skips))
 
 
 def collect(conn: sqlite3.Connection, index: dict, music_root: str = "") -> list:
     """Resolve every analysed track to (path, song_key, plays, skips, score).
+
+    Two passes: the path is free to parse, so it goes first, and only the files
+    it cannot identify are opened to read their tags. Each tag read costs ~190ms
+    on the external drive (and gets slower, not faster, if threaded - the disk
+    seeks), so halving the number of reads is the only lever that matters.
 
     Tracks with no Apple match, or a match carrying no plays, are left out
     entirely rather than stored with score 0 - a zero would rank them below
@@ -121,23 +115,34 @@ def collect(conn: sqlite3.Connection, index: dict, music_root: str = "") -> list
     """
     paths = [r[0] for r in conn.execute("SELECT path FROM tracks WHERE status = 'ok'")
              if Path(r[0]).suffix.lower() in AUDIO_EXT]
-    tags = read_all_tags(paths, music_root) if music_root else {}
 
     rows = []
+    unresolved = []
     for path in paths:
-        artist, title = tags.get(path, (None, None))
-        # The tagged title is the most reliable candidate, so try it first and
-        # let the path-derived guesses cover files with missing or odd tags.
-        stems = ([norm(title)] if title else []) + stems_of(path)
-        tracks, status = match(norm(path) + norm(artist or ""), stems, index)
+        tracks, status = match(norm(path), stems_of(path), index)
+        if status == "matched":
+            row = _row(path, tracks)
+            if row:
+                rows.append(row)
+        else:
+            unresolved.append(path)
+
+    print(f"  path matching: {len(rows)} scored, {len(unresolved)} left to check", flush=True)
+    if not music_root:
+        return rows
+
+    for done, path in enumerate(unresolved, 1):
+        if done % 2000 == 0:
+            print(f"  read {done}/{len(unresolved)} tags", flush=True)
+        artist, title = read_tags(host_path(path, music_root))
+        if not title:
+            continue
+        tracks, status = match(norm(path) + norm(artist or ""), [norm(title)], index)
         if status != "matched":
             continue
-        plays = sum(t.get("Track Play Count") or 0 for t in tracks)
-        if plays <= 0:
-            continue
-        skips = sum(t.get("Skip Count") or 0 for t in tracks)
-        song_key = norm(tracks[0].get("Artist") or "") + "|" + norm(tracks[0].get("Title") or "")
-        rows.append((path, song_key, plays, skips, score_of(plays, skips)))
+        row = _row(path, tracks)
+        if row:
+            rows.append(row)
     return rows
 
 
