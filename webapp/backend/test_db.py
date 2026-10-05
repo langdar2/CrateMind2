@@ -64,6 +64,24 @@ def test_load_ok_tracks_returns_only_ok_with_embedding():
     assert a["bpm"] == 120.0
 
 
+def test_load_ok_tracks_joins_preferences_and_leaves_unscored_null():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    conn.execute(
+        "INSERT INTO preferences (path, song_key, plays, skips, score) VALUES (?, ?, ?, ?, ?)",
+        ("/music/a.mp3", "artist|title", 100, 5, 4.2),
+    )
+    conn.commit()
+
+    tracks = {t["path"]: t for t in db.load_ok_tracks(conn)}
+
+    assert tracks["/music/a.mp3"]["score"] == 4.2
+    assert tracks["/music/a.mp3"]["song_key"] == "artist|title"
+    # Never imported -> None, so it sorts out of the way instead of ranking as 0.
+    assert tracks["/music/b.mp3"]["score"] is None
+    assert tracks["/music/b.mp3"]["song_key"] is None
+
+
 def test_recent_ok_tracks_orders_by_last_scanned_desc():
     path = _make_test_db()
     conn = db.get_connection(path)
@@ -146,6 +164,7 @@ def test_retry_failed_tracks_resets_status_and_clears_error():
 if __name__ == "__main__":
     test_fetch_stats_counts_status_and_aggregates()
     test_load_ok_tracks_returns_only_ok_with_embedding()
+    test_load_ok_tracks_joins_preferences_and_leaves_unscored_null()
     test_recent_ok_tracks_orders_by_last_scanned_desc()
     test_search_ok_tracks_matches_substring()
     test_search_failed_tracks_returns_error_message_and_total()

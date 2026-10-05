@@ -96,7 +96,7 @@ def preview_playlist(req: PreviewRequest):
         seed = next((t for t in tracks if t["path"] == req.seed_path), None)
         if seed is None:
             raise HTTPException(status_code=404, detail=f"Seed-Track nicht gefunden: {req.seed_path}")
-        matches = similarity.top_similar(seed, tracks, limit=req.limit)
+        matches = presets.dedupe_by_song(similarity.top_similar(seed, tracks, limit=req.limit))
     elif req.mode == "smart":
         if not req.mood_prompt:
             raise HTTPException(status_code=400, detail="mood_prompt fehlt")
@@ -106,7 +106,11 @@ def preview_playlist(req: PreviewRequest):
                 raise HTTPException(status_code=404, detail=f"Seed-Track nicht gefunden: {req.seed_path}")
             candidates = similarity.top_similar(seed, tracks, limit=MAX_SMART_CANDIDATES)
         else:
-            candidates = tracks[:MAX_SMART_CANDIDATES]
+            # Without a seed there is nothing to make the shortlist relevant, so
+            # send Jev the best-liked tracks rather than whatever the database
+            # happens to return first.
+            candidates = sorted(tracks, key=lambda t: t["score"] or 0, reverse=True)[:MAX_SMART_CANDIDATES]
+        candidates = presets.dedupe_by_song(candidates)
         try:
             matches = typesafe_client.rank_by_vibe(req.mood_prompt, candidates, limit=req.limit)
         except typesafe_client.TypesafeError as e:
@@ -119,7 +123,7 @@ def preview_playlist(req: PreviewRequest):
             "path": t["path"], "bpm": t["bpm"], "key": t["key"],
             "danceability": t["danceability"], "mood_happy": t["mood_happy"],
             "mood_aggressive": t["mood_aggressive"], "mood_relaxed": t["mood_relaxed"],
-            "mood_party": t["mood_party"],
+            "mood_party": t["mood_party"], "score": t.get("score"),
         }
         for t in matches
     ]}

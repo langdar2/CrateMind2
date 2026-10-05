@@ -428,3 +428,8 @@ input[type="range"]:disabled {
   text-transform: uppercase;
   color: var(--lcars-ice);
 }
+
+.chip-score {
+  border-color: var(--lcars-gold);
+  color: var(--lcars-gold);
+}

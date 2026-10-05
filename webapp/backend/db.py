@@ -11,7 +11,22 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     # home-network app; switch to one connection per request if that
     # assumption ever needs checking. Read-write (not mode=ro) so the retry
     # endpoint can flip failed tracks back to pending.
-    return sqlite3.connect(db_path, check_same_thread=False)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    # Written by scripts/import_preferences.py, which may never have run on this
+    # machine; create it empty so the LEFT JOIN below does not blow up.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS preferences (
+            path TEXT PRIMARY KEY REFERENCES tracks(path),
+            song_key TEXT NOT NULL,
+            plays INTEGER NOT NULL,
+            skips INTEGER NOT NULL,
+            score REAL NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    return conn
 
 
 def _bpm_histogram(bpms: list, bucket_size: int = 20) -> list:
@@ -51,14 +66,16 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
     rows = conn.execute(
         """
         SELECT t.path, f.bpm, f.key, f.mood_happy, f.mood_aggressive, f.mood_relaxed,
-               f.mood_party, f.danceability, f.embedding
-        FROM tracks t JOIN features f ON f.path = t.path
+               f.mood_party, f.danceability, f.embedding, p.score, p.song_key
+        FROM tracks t
+        JOIN features f ON f.path = t.path
+        LEFT JOIN preferences p ON p.path = t.path
         WHERE t.status = 'ok' AND f.embedding IS NOT NULL
         """
     ).fetchall()
 
     tracks = []
-    for path, bpm, key, happy, aggressive, relaxed, party, dance, emb_blob in rows:
+    for path, bpm, key, happy, aggressive, relaxed, party, dance, emb_blob, score, song_key in rows:
         tracks.append({
             "path": path,
             "bpm": bpm,
@@ -68,6 +85,10 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
             "mood_relaxed": relaxed,
             "mood_party": party,
             "danceability": dance,
+            # None for anything the Apple import could not score - deliberately
+            # not 0.0, which would rank unplayed music below disliked music.
+            "score": score,
+            "song_key": song_key,
             "embedding": np.frombuffer(emb_blob, dtype=np.float32),
         })
     return tracks
