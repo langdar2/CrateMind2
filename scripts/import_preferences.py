@@ -19,6 +19,7 @@ import math
 import os
 import sqlite3
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -91,6 +92,26 @@ def read_tags(path: str) -> tuple:
     return artist, title
 
 
+def read_all_tags(paths: list, music_root: str, workers: int = 16) -> dict:
+    """{db_path: (artist, title)} for every path.
+
+    Each read is ~190ms of waiting on the external drive, so threads turn a
+    100-minute serial crawl into a few minutes. Pure I/O wait, no GIL contention.
+    """
+    done = 0
+
+    def one(path):
+        nonlocal done
+        result = read_tags(host_path(path, music_root))
+        done += 1
+        if done % 2000 == 0:
+            print(f"  read {done}/{len(paths)} tags", flush=True)
+        return result
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return dict(zip(paths, pool.map(one, paths)))
+
+
 def collect(conn: sqlite3.Connection, index: dict, music_root: str = "") -> list:
     """Resolve every analysed track to (path, song_key, plays, skips, score).
 
@@ -98,12 +119,13 @@ def collect(conn: sqlite3.Connection, index: dict, music_root: str = "") -> list
     entirely rather than stored with score 0 - a zero would rank them below
     disliked music and bury everything that simply has not been played yet.
     """
-    paths = [r[0] for r in conn.execute("SELECT path FROM tracks WHERE status = 'ok'")]
+    paths = [r[0] for r in conn.execute("SELECT path FROM tracks WHERE status = 'ok'")
+             if Path(r[0]).suffix.lower() in AUDIO_EXT]
+    tags = read_all_tags(paths, music_root) if music_root else {}
+
     rows = []
     for path in paths:
-        if Path(path).suffix.lower() not in AUDIO_EXT:
-            continue
-        artist, title = read_tags(host_path(path, music_root)) if music_root else (None, None)
+        artist, title = tags.get(path, (None, None))
         # The tagged title is the most reliable candidate, so try it first and
         # let the path-derived guesses cover files with missing or odd tags.
         stems = ([norm(title)] if title else []) + stems_of(path)
