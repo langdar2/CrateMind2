@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from import_preferences import collect, score_of, write
+from import_preferences import collect, load_history, score_of, weigh, write
 from match_probe import build_index
 
 APPLE = [
@@ -66,6 +66,55 @@ def test_collect_groups_duplicates_and_skips_unscorable():
     assert "/music/a/01. a - pending.mp3" not in by_path
 
 
+HISTORY_CSV = """Track Description,Date Played,Play Count,Skip Count
+Falco - Vienna Calling,20260901,10,0
+Falco - Vienna Calling,20180901,100,0
+Nena - 99 Luftballons,20260901,10,0
+"""
+
+
+def _history_file():
+    tmp = tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode="w", encoding="utf-8")
+    tmp.write(HISTORY_CSV)
+    tmp.close()
+    return tmp.name
+
+
+def test_recent_plays_outweigh_old_ones():
+    history, old_weight = load_history(_history_file(), half_life_years=2.0)
+    recent = history["nena99luftballons"][0]
+    # 100 plays from 2018 are ~8 years old: four half-lives, so under 1/16 each.
+    old = history["falcoviennacalling"][0]
+    assert abs(recent - 10.0) < 0.01, recent
+    assert 10 < old < 20, old
+    # Anything older than the log itself is discounted hardest of all.
+    assert 0 < old_weight < 0.1, old_weight
+
+
+def test_plays_predating_the_log_are_aged_not_dropped():
+    history, old_weight = load_history(_history_file(), half_life_years=2.0)
+    # Lifetime counter says 200, the log only accounts for 110 -> 90 are older
+    # than the log and must still carry a little weight, not vanish.
+    tracks = [{"Artist": "Falco", "Title": "Vienna Calling",
+               "Track Play Count": 200, "Skip Count": 0}]
+    weighted, _, raw = weigh(tracks, history, old_weight)
+    logged = history["falcoviennacalling"][0]
+    assert raw == 200
+    assert weighted > logged
+    assert weighted < logged + 90
+
+
+def test_untracked_song_keeps_a_residual_score():
+    """A song the log never saw still scores - just very low."""
+    history, old_weight = load_history(_history_file(), half_life_years=2.0)
+    tracks = [{"Artist": "Gone", "Title": "Old Favourite",
+               "Track Play Count": 109, "Skip Count": 1}]
+    weighted, _, raw = weigh(tracks, history, old_weight)
+    assert raw == 109
+    assert 0 < weighted < 109 * 0.1
+    assert score_of(weighted, 0) > 0
+
+
 def test_write_is_idempotent():
     conn = _db()
     rows = collect(conn, build_index(APPLE))
@@ -77,5 +126,8 @@ def test_write_is_idempotent():
 if __name__ == "__main__":
     test_score_damps_plays_and_uses_skip_ratio()
     test_collect_groups_duplicates_and_skips_unscorable()
+    test_recent_plays_outweigh_old_ones()
+    test_plays_predating_the_log_are_aged_not_dropped()
+    test_untracked_song_keeps_a_residual_score()
     test_write_is_idempotent()
     print("All import_preferences tests passed.")
