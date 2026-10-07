@@ -109,9 +109,10 @@ def select_tracks(req: PreviewRequest) -> list:
         seed = next((t for t in tracks if t["path"] == req.seed_path), None)
         if seed is None:
             raise HTTPException(status_code=404, detail=f"Seed-Track nicht gefunden: {req.seed_path}")
-        matches = presets.dedupe_by_song(
-            similarity.top_similar(seed, tracks, limit=req.limit, taste_weight=req.taste_weight)
-        )
+        # Ask for extra, since de-duplicating and capping thin the list out.
+        similar = similarity.top_similar(seed, tracks, limit=req.limit * 3,
+                                         taste_weight=req.taste_weight)
+        matches = presets.cap_per_artist(presets.dedupe_by_song(similar))[:req.limit]
     elif req.mode == "smart":
         if not req.mood_prompt:
             raise HTTPException(status_code=400, detail="mood_prompt fehlt")
@@ -131,7 +132,7 @@ def select_tracks(req: PreviewRequest) -> list:
             reserved = round(MAX_SMART_CANDIDATES * req.discovery)
             picks = random.sample(unscored, min(reserved, len(unscored)))
             candidates = scored[:MAX_SMART_CANDIDATES - len(picks)] + picks
-        candidates = presets.dedupe_by_song(candidates)
+        candidates = presets.cap_per_artist(presets.dedupe_by_song(candidates))
         try:
             matches = typesafe_client.rank_by_vibe(req.mood_prompt, candidates, limit=req.limit)
         except typesafe_client.TypesafeError as e:

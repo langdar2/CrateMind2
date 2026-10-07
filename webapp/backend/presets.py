@@ -33,6 +33,28 @@ def dedupe_by_song(tracks: list) -> list:
     return out
 
 
+MAX_PER_ARTIST = 5
+
+
+def cap_per_artist(tracks: list, limit: int = MAX_PER_ARTIST) -> list:
+    """Keep at most `limit` tracks per artist, in the order given.
+
+    A BPM-and-mood filter happily returns twenty Broilers songs in a row,
+    because an artist's catalogue is consistent in exactly the properties
+    being filtered on.
+    """
+    seen = {}
+    out = []
+    for track in tracks:
+        artist = track.get("artist")
+        if artist:
+            if seen.get(artist, 0) >= limit:
+                continue
+            seen[artist] = seen.get(artist, 0) + 1
+        out.append(track)
+    return out
+
+
 def _checks(criteria: dict, skip=()) -> list:
     return [(_THRESHOLD_CHECKS[key], value) for key, value in criteria.items()
             if key in _THRESHOLD_CHECKS and key not in skip]
@@ -57,7 +79,7 @@ def filter_by_criteria(tracks: list, criteria: dict, limit: int = 30,
     # uses the raw score, which has none of the percentile's rounding ties.
     if criteria.get("min_percentile"):
         matches.sort(key=lambda t: t["score"], reverse=True)
-    matches = dedupe_by_song(matches)
+    matches = cap_per_artist(dedupe_by_song(matches))
 
     # A percentile threshold can never admit a track that has no percentile,
     # so asking for favourites silently rules out the ~79% of the library the
@@ -73,4 +95,6 @@ def filter_by_criteria(tracks: list, criteria: dict, limit: int = 30,
             and all(c(t, v) for c, v in _checks(criteria, skip=TASTE_KEYS))]
     # Random, so repeated previews keep surfacing different unheard tracks.
     picks = random.sample(pool, min(wanted, len(pool)))
-    return _weave(matches[:limit - len(picks)], dedupe_by_song(picks))
+    woven = _weave(matches[:limit - len(picks)], dedupe_by_song(picks))
+    # Cap again: a discovery pick can share an artist with the scored portion.
+    return cap_per_artist(woven)[:limit]

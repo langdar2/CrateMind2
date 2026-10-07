@@ -1,3 +1,4 @@
+import collections
 import sys
 from pathlib import Path
 
@@ -94,6 +95,30 @@ def test_dedupe_applies_before_the_limit():
     assert [t["song_key"] for t in result] == ["same", "other"]
 
 
+def test_cap_per_artist_keeps_the_first_five():
+    tracks = [{"path": f"/x/{i}", "artist": "broilers"} for i in range(9)]
+    tracks += [{"path": "/y/1", "artist": "falco"}]
+    result = presets.cap_per_artist(tracks)
+    assert [t["path"] for t in result] == [f"/x/{i}" for i in range(5)] + ["/y/1"]
+
+
+def test_cap_per_artist_keeps_tracks_with_no_artist():
+    tracks = [{"path": f"/x/{i}", "artist": ""} for i in range(9)]
+    assert len(presets.cap_per_artist(tracks)) == 9
+
+
+def test_filter_caps_artists_before_taking_the_limit():
+    """Twenty Broilers tracks must not fill a twenty-track playlist."""
+    pool = [dict(_track(bpm=120, danceability=0.9, mood_party=0.9, mood_relaxed=0.1),
+                 path=f"/b/{i}.mp3", artist="broilers") for i in range(20)]
+    pool += [dict(_track(bpm=121, danceability=0.9, mood_party=0.9, mood_relaxed=0.1),
+                  path=f"/f/{i}.mp3", artist="falco") for i in range(20)]
+    result = presets.filter_by_criteria(pool, {"min_bpm": 100}, limit=20)
+    counts = collections.Counter(t["artist"] for t in result)
+    assert counts["broilers"] == 5, counts
+    assert counts["falco"] == 5, counts
+
+
 def _mixed_pool():
     """40 well-liked tracks plus 40 the Apple export never scored."""
     liked = [_scored(120 + i, score=5.0 - i * 0.01, percentile=99) for i in range(40)]
@@ -152,6 +177,9 @@ if __name__ == "__main__":
     test_without_min_percentile_order_is_untouched()
     test_dedupe_keeps_first_copy_and_all_unidentified()
     test_dedupe_applies_before_the_limit()
+    test_cap_per_artist_keeps_the_first_five()
+    test_cap_per_artist_keeps_tracks_with_no_artist()
+    test_filter_caps_artists_before_taking_the_limit()
     test_discovery_reserves_slots_for_unscored_tracks()
     test_discovery_picks_differ_between_calls()
     test_discovery_respects_the_other_criteria()

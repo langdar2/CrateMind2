@@ -7,6 +7,19 @@ import numpy as np
 MOOD_COLUMNS = ["mood_happy", "mood_aggressive", "mood_relaxed", "mood_party", "danceability"]
 
 
+def artist_of(path: str) -> str:
+    """Artist from the folder name, which is laid out as "Artist - Album".
+
+    Deliberately not taken from the Apple match: that is missing for most of
+    the library and wrong for about a tenth of what it does cover, whereas the
+    folder name is present for 99.9% of files and is what the file itself says.
+    Compilation folders all collapse to "various artists", which caps a
+    sampler at the same five tracks - fine for the purpose.
+    """
+    folder = path.rsplit("/", 2)[-2] if path.count("/") >= 2 else ""
+    return folder.split(" - ")[0].strip().lower()
+
+
 def get_connection(db_path: str) -> sqlite3.Connection:
     # ponytail: one shared connection across FastAPI's threadpool; relies on
     # sqlite3's default serialized threading mode. Fine for this single-user
@@ -128,6 +141,7 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
             "score": score,
             "percentile": percentile,
             "song_key": song_key,
+            "artist": artist_of(path),
             "embedding": np.frombuffer(emb_blob, dtype=np.float32),
         })
     return tracks
