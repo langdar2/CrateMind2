@@ -113,6 +113,19 @@ def test_percentile_ranks_scores_among_scored_tracks_only():
     assert tracks["/music/a.mp3"]["percentile"] is None
 
 
+def test_recipe_round_trips_and_overwrites():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+
+    assert db.load_recipe(conn, 7) is None
+    db.save_recipe(conn, 7, {"mode": "manual", "limit": 30})
+    assert db.load_recipe(conn, 7) == {"mode": "manual", "limit": 30}
+    # Refreshing with new criteria replaces the recipe rather than adding one.
+    db.save_recipe(conn, 7, {"mode": "seed", "seed_path": "/music/a.mp3"})
+    assert db.load_recipe(conn, 7) == {"mode": "seed", "seed_path": "/music/a.mp3"}
+    assert conn.execute("SELECT COUNT(*) FROM playlist_recipes").fetchone()[0] == 1
+
+
 def test_recent_ok_tracks_orders_by_last_scanned_desc():
     path = _make_test_db()
     conn = db.get_connection(path)
@@ -197,6 +210,7 @@ if __name__ == "__main__":
     test_load_ok_tracks_returns_only_ok_with_embedding()
     test_load_ok_tracks_joins_preferences_and_leaves_unscored_null()
     test_percentile_ranks_scores_among_scored_tracks_only()
+    test_recipe_round_trips_and_overwrites()
     test_recent_ok_tracks_orders_by_last_scanned_desc()
     test_search_ok_tracks_matches_substring()
     test_search_failed_tracks_returns_error_message_and_total()

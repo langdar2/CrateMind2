@@ -51,6 +51,9 @@ class PreviewRequest(BaseModel):
 class CreatePlaylistRequest(BaseModel):
     name: str
     track_paths: list
+    # The preview request these tracks came from. Stored so the playlist can
+    # be rebuilt later without the caller having to repeat the criteria.
+    recipe: Optional[PreviewRequest] = None
 
 
 class CastRequest(BaseModel):
@@ -158,6 +161,8 @@ def add_playlist(req: CreatePlaylistRequest):
         playlist_id = vuio_client.create_playlist(req.name, req.track_paths)
     except vuio_client.VuioError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
+    if req.recipe is not None:
+        db.save_recipe(app.state.conn, playlist_id, req.recipe.model_dump())
     return {"playlist_id": playlist_id}
 
 
@@ -170,13 +175,28 @@ def list_renderers():
 
 
 @app.post("/api/playlists/{playlist_id}/refresh")
-def refresh_playlist(playlist_id: int, req: PreviewRequest):
-    """Rebuild an existing VUIO playlist from the same recipe.
+def refresh_playlist(playlist_id: int, req: Optional[PreviewRequest] = None):
+    """Rebuild an existing VUIO playlist.
 
-    Discovery slots are drawn fresh each run, so a scheduled refresh keeps
-    putting unheard music in front of you without a new playlist appearing
-    every time.
+    Without a body the recipe stored when the playlist was created is reused,
+    so a scheduled refresh is a one-liner. With a body the recipe is replaced,
+    and later bodyless refreshes follow the new one.
+
+    Discovery slots are drawn fresh each run, so repeated refreshes keep
+    putting unheard music in front of you without a new playlist appearing.
     """
+    if req is None:
+        stored = db.load_recipe(app.state.conn, playlist_id)
+        if stored is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Kein Rezept für Playlist {playlist_id} gespeichert - "
+                       "Kriterien mitschicken oder die Playlist neu anlegen.",
+            )
+        req = PreviewRequest(**stored)
+    else:
+        db.save_recipe(app.state.conn, playlist_id, req.model_dump())
+
     paths = [t["path"] for t in select_tracks(req)]
     try:
         count = vuio_client.replace_playlist_tracks(playlist_id, paths)

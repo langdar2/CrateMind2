@@ -122,6 +122,36 @@ def test_refresh_replaces_the_playlist_contents():
     assert paths == ["/music/a.mp3"]
 
 
+def test_create_stores_the_recipe_and_refresh_reuses_it():
+    recipe = {"mode": "manual", "criteria": {"min_bpm": 10}, "limit": 5}
+    with patch.object(vuio_client, "create_playlist", return_value=11):
+        with TestClient(app_module.app) as client:
+            client.post("/api/playlists", json={"name": "x", "track_paths": ["/music/a.mp3"],
+                                                "recipe": recipe})
+    assert app_module.db.load_recipe(app_module.app.state.conn, 11)["limit"] == 5
+
+    # No body: the stored recipe drives the rebuild.
+    with patch.object(vuio_client, "replace_playlist_tracks", return_value=1) as mock_replace:
+        with TestClient(app_module.app) as client:
+            response = client.post("/api/playlists/11/refresh")
+    assert response.status_code == 200
+    assert mock_replace.call_args[0][1] == ["/music/a.mp3"]
+
+
+def test_refresh_without_a_stored_recipe_is_a_404():
+    with TestClient(app_module.app) as client:
+        response = client.post("/api/playlists/9999/refresh")
+    assert response.status_code == 404
+
+
+def test_refresh_with_a_body_replaces_the_stored_recipe():
+    with patch.object(vuio_client, "replace_playlist_tracks", return_value=1):
+        with TestClient(app_module.app) as client:
+            client.post("/api/playlists/12/refresh",
+                        json={"mode": "manual", "criteria": {"min_bpm": 10}, "limit": 7})
+    assert app_module.db.load_recipe(app_module.app.state.conn, 12)["limit"] == 7
+
+
 def test_refresh_maps_vuio_error_to_502():
     with patch.object(vuio_client, "replace_playlist_tracks",
                       side_effect=vuio_client.VuioError("down")):
@@ -204,6 +234,9 @@ if __name__ == "__main__":
     test_preview_smart_mode_ranks_by_vibe()
     test_api_defaults_match_the_apps_own_behaviour()
     test_refresh_replaces_the_playlist_contents()
+    test_create_stores_the_recipe_and_refresh_reuses_it()
+    test_refresh_without_a_stored_recipe_is_a_404()
+    test_refresh_with_a_body_replaces_the_stored_recipe()
     test_refresh_maps_vuio_error_to_502()
     test_create_playlist_maps_vuio_error_to_502()
     test_create_playlist_success()

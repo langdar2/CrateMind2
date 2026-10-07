@@ -39,6 +39,7 @@ export default function Playlists() {
   const [preview, setPreview] = useState([]);
   const [playlistName, setPlaylistName] = useState("");
   const [playlistId, setPlaylistId] = useState(null);
+  const [lastRecipe, setLastRecipe] = useState(null);
   const [renderers, setRenderers] = useState([]);
   const [error, setError] = useState(null);
   const seedQueryRef = useRef("");
@@ -85,18 +86,20 @@ export default function Playlists() {
 
   const runPreview = async (body) => {
     setError(null);
+    const recipe =
+      body ||
+      (mode === "manual"
+        ? { mode, criteria: manualCriteria(), discovery: discovery / 100 }
+        : mode === "prompt"
+        ? { mode, prompt, discovery: discovery / 100 }
+        : mode === "smart"
+        ? { mode, seed_path: seedPath || undefined, mood_prompt: moodPrompt }
+        : { mode, seed_path: seedPath, taste_weight: tasteWeight / 100 });
     try {
-      const result = await previewPlaylist(
-        body ||
-          (mode === "manual"
-            ? { mode, criteria: manualCriteria(), discovery: discovery / 100 }
-            : mode === "prompt"
-            ? { mode, prompt, discovery: discovery / 100 }
-            : mode === "smart"
-            ? { mode, seed_path: seedPath || undefined, mood_prompt: moodPrompt }
-            : { mode, seed_path: seedPath, taste_weight: tasteWeight / 100 })
-      );
+      const result = await previewPlaylist(recipe);
       setPreview(result.tracks);
+      // Kept so the playlist can be rebuilt later without re-entering criteria.
+      setLastRecipe(recipe);
     } catch (e) {
       setError(e.message);
     }
@@ -128,7 +131,11 @@ export default function Playlists() {
   const handleCreate = async () => {
     setError(null);
     try {
-      const result = await createPlaylist({ name: playlistName, track_paths: preview.map((t) => t.path) });
+      const result = await createPlaylist({
+        name: playlistName,
+        track_paths: preview.map((t) => t.path),
+        recipe: lastRecipe,
+      });
       setPlaylistId(result.playlist_id);
       setRenderers((await getRenderers()).renderers);
     } catch (e) {

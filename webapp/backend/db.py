@@ -1,4 +1,6 @@
+import json
 import sqlite3
+import time
 
 import numpy as np
 
@@ -25,8 +27,38 @@ def get_connection(db_path: str) -> sqlite3.Connection:
         )
         """
     )
+    # Playlist recipes are webapp state rather than analysis output, but a
+    # second database file for one small table is not worth the moving parts.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS playlist_recipes (
+            playlist_id INTEGER PRIMARY KEY,
+            recipe TEXT NOT NULL,
+            updated_at REAL NOT NULL
+        )
+        """
+    )
     conn.commit()
     return conn
+
+
+def save_recipe(conn: sqlite3.Connection, playlist_id: int, recipe: dict) -> None:
+    conn.execute(
+        """
+        INSERT INTO playlist_recipes (playlist_id, recipe, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(playlist_id) DO UPDATE SET
+            recipe = excluded.recipe, updated_at = excluded.updated_at
+        """,
+        (playlist_id, json.dumps(recipe), time.time()),
+    )
+    conn.commit()
+
+
+def load_recipe(conn: sqlite3.Connection, playlist_id: int):
+    row = conn.execute(
+        "SELECT recipe FROM playlist_recipes WHERE playlist_id = ?", (playlist_id,)
+    ).fetchone()
+    return json.loads(row[0]) if row else None
 
 
 def _bpm_histogram(bpms: list, bucket_size: int = 20) -> list:
