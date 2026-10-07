@@ -6,13 +6,18 @@ import httpx
 OMLX_BASE_URL = os.environ.get("OMLX_BASE_URL", "http://192.168.0.3:8001")
 OMLX_MODEL = os.environ.get("OMLX_MODEL", "gemma-4-E4B-it-MLX-8bit")
 
-_COLUMNS = ["bpm", "danceability", "mood_happy", "mood_aggressive", "mood_relaxed", "mood_party"]
-ALLOWED_CRITERIA_KEYS = {f"{bound}_{col}" for col in _COLUMNS for bound in ("min", "max")}
+from presets import FILTER_COLUMNS
+
+ALLOWED_CRITERIA_KEYS = {f"{bound}_{col}" for col in FILTER_COLUMNS for bound in ("min", "max")}
 
 _SYSTEM_PROMPT = (
     "Convert the user's playlist mood/activity description into a JSON object "
     "of numeric thresholds. Allowed keys: " + ", ".join(sorted(ALLOWED_CRITERIA_KEYS)) + ". "
-    "bpm is beats per minute (typically 60-180); all other values range 0.0-1.0. "
+    "bpm is beats per minute (typically 60-180). "
+    "percentile is how much the listener likes a track, 0-100: min_percentile 90 "
+    "keeps only their top 10%, 50 keeps the better-liked half. Use it when the "
+    "description asks for favourites or well-liked music. "
+    "All other values range 0.0-1.0. "
     "Only include keys clearly implied by the description. "
     "Respond with ONLY the JSON object, no explanation, no markdown."
 )

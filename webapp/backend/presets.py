@@ -1,7 +1,10 @@
-_COLUMNS = ["bpm", "danceability", "mood_happy", "mood_aggressive", "mood_relaxed", "mood_party", "percentile"]
+# The one place that defines what a playlist can be filtered on. omlx_client
+# builds the prompt vocabulary from this, so a column added here is immediately
+# available to free-text prompts too.
+FILTER_COLUMNS = ["bpm", "danceability", "mood_happy", "mood_aggressive", "mood_relaxed", "mood_party", "percentile"]
 
 _THRESHOLD_CHECKS = {}
-for _col in _COLUMNS:
+for _col in FILTER_COLUMNS:
     _THRESHOLD_CHECKS[f"min_{_col}"] = (lambda c: lambda track, value: track.get(c) is not None and track[c] >= value)(_col)
     _THRESHOLD_CHECKS[f"max_{_col}"] = (lambda c: lambda track, value: track.get(c) is not None and track[c] <= value)(_col)
 

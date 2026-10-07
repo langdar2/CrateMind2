@@ -46,6 +46,19 @@ def test_parse_prompt_to_criteria_drops_unknown_keys():
     assert criteria == {"min_bpm": 120}
 
 
+def test_taste_threshold_survives_parsing():
+    payload = _chat_payload('{"min_percentile": 90, "min_bpm": 120}')
+    with patch("omlx_client.httpx.post", return_value=FakeResponse(payload)):
+        criteria = omlx_client.parse_prompt_to_criteria("energiegeladen, nur was ich mag")
+    assert criteria == {"min_percentile": 90, "min_bpm": 120}
+
+
+def test_prompt_vocabulary_matches_what_the_filter_accepts():
+    """The two drifted apart once and silently dropped taste from prompt mode."""
+    import presets
+    assert omlx_client.ALLOWED_CRITERIA_KEYS == set(presets._THRESHOLD_CHECKS)
+
+
 def test_parse_prompt_to_criteria_raises_on_invalid_json():
     payload = _chat_payload("not json at all")
     with patch("omlx_client.httpx.post", return_value=FakeResponse(payload)):
@@ -60,5 +73,7 @@ if __name__ == "__main__":
     test_parse_prompt_to_criteria_parses_plain_json()
     test_parse_prompt_to_criteria_strips_markdown_fence()
     test_parse_prompt_to_criteria_drops_unknown_keys()
+    test_taste_threshold_survives_parsing()
+    test_prompt_vocabulary_matches_what_the_filter_accepts()
     test_parse_prompt_to_criteria_raises_on_invalid_json()
     print("All omlx_client tests passed.")

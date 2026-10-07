@@ -221,7 +221,7 @@ export default function Playlists() {
         {mode === "prompt" && (
           <input
             type="text"
-            placeholder="z.B. 'energiegeladenes Workout' oder 'entspannter Sonntagmorgen'"
+            placeholder="z.B. 'energiegeladenes Workout, nur Lieblingstracks' oder 'entspannter Sonntagmorgen'"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
           />
