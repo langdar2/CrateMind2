@@ -57,6 +57,19 @@ def test_call_tool_raises_vuio_error_on_malformed_content():
             pass
 
 
+def test_call_tool_raises_vuio_error_on_plain_text_content():
+    """VUIO answers some failures with prose in a successful envelope; that
+    must become a clean error, not a JSONDecodeError escaping as a 500."""
+    payload = {"jsonrpc": "2.0", "id": 1,
+               "result": {"content": [{"text": "Playlist 3 not found"}]}}
+    with patch("vuio_client.httpx.post", return_value=FakeResponse(payload)):
+        try:
+            vuio_client._call_tool("add_to_playlist", {})
+            assert False, "expected VuioError"
+        except vuio_client.VuioError as e:
+            assert "Playlist 3 not found" in str(e), str(e)
+
+
 def test_create_playlist_creates_then_adds_resolved_file_ids():
     def fake_call_tool(name, arguments):
         if name == "create_playlist":
@@ -177,6 +190,7 @@ if __name__ == "__main__":
     test_call_tool_parses_text_content_fallback()
     test_call_tool_raises_vuio_error_on_jsonrpc_error()
     test_call_tool_raises_vuio_error_on_malformed_content()
+    test_call_tool_raises_vuio_error_on_plain_text_content()
     test_create_playlist_creates_then_adds_resolved_file_ids()
     test_find_file_id_raises_when_path_not_found()
     test_call_tool_raises_vuio_error_on_http_failure()

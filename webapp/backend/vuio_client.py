@@ -62,9 +62,17 @@ def _call_tool(name: str, arguments: dict) -> dict:
         result = payload["result"]
         if "structuredContent" in result:
             return result["structuredContent"]
-        return json.loads(result["content"][0]["text"])
+        text = result["content"][0]["text"]
     except (KeyError, IndexError, TypeError) as e:
         raise VuioError(f"unexpected response shape from VuIO for tool '{name}': {e}") from e
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # VUIO reports some failures (a missing playlist, say) as plain prose
+        # in a perfectly successful JSON-RPC envelope. Surface its wording
+        # instead of letting the decode blow up as a 500.
+        raise VuioError(f"VuIO tool '{name}' failed: {text.strip()[:200]}") from None
 
 
 def list_renderers() -> list:
