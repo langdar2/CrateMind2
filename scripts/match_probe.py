@@ -107,9 +107,10 @@ def match(haystack: str, stem: str, index: dict):
         for artist_key, tracks in candidates:
             if artist_key and artist_key in haystack:
                 return tracks, "matched"
-        # Title is unique in the library, so accept it without artist confirmation.
-        if len(candidates) == 1:
-            return candidates[0][1], "matched"
+        # No artist confirmation, no match. Accepting a lone title-match used
+        # to look like a cheap win, but these paths always carry the artist,
+        # so it only ever fired on coincidences: "Manowar - The Power" took
+        # Snap!'s play counts, "Madonna - Human Nature" Michael Jackson's.
         status = "artist_mismatch"
     return None, status
 
