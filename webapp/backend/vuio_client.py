@@ -102,6 +102,29 @@ def create_playlist(name: str, track_paths: list) -> int:
     return playlist_id
 
 
+def replace_playlist_tracks(playlist_id: int, track_paths: list) -> int:
+    """Swap a playlist's contents, keeping the playlist itself.
+
+    Renderers and DLNA clients hold on to the playlist id, so refilling it
+    beats deleting and recreating. Resolve the new tracks first: if one of
+    them is missing from VUIO we fail before the old contents are gone.
+    """
+    file_ids = [find_file_id(path) for path in track_paths]
+
+    existing = _call_tool("get_playlist_tracks", {"playlist_id": playlist_id})
+    try:
+        old_ids = [t["id"] for t in existing["tracks"]]
+    except (KeyError, TypeError) as e:
+        raise VuioError(f"unexpected response shape from VuIO for tool 'get_playlist_tracks': {e}") from e
+
+    # ponytail: VUIO removes one track per call; fine for playlist-sized lists.
+    for media_file_id in old_ids:
+        _call_tool("remove_from_playlist", {"playlist_id": playlist_id, "media_file_id": media_file_id})
+    if file_ids:
+        _call_tool("add_to_playlist", {"playlist_id": playlist_id, "media_file_ids": file_ids})
+    return len(file_ids)
+
+
 def cast_playlist(playlist_id: int, renderer_id: str) -> dict:
     return _call_tool("cast_playlist_to_renderer", {"playlist_id": playlist_id, "renderer_id": renderer_id})
 

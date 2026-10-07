@@ -102,6 +102,35 @@ def test_preview_smart_mode_ranks_by_vibe():
     assert response.json()["tracks"][0]["path"] == "/music/a.mp3"
 
 
+def test_api_defaults_match_the_apps_own_behaviour():
+    """A direct API caller must get the playlist the UI would build, not a
+    silently different one because the knobs default to off."""
+    req = app_module.PreviewRequest(mode="manual")
+    assert req.discovery == 0.1
+    assert req.taste_weight == 0.3
+
+
+def test_refresh_replaces_the_playlist_contents():
+    with patch.object(vuio_client, "replace_playlist_tracks", return_value=1) as mock_replace:
+        with TestClient(app_module.app) as client:
+            response = client.post("/api/playlists/7/refresh",
+                                   json={"mode": "manual", "criteria": {"min_bpm": 10}})
+    assert response.status_code == 200
+    assert response.json() == {"playlist_id": 7, "track_count": 1}
+    playlist_id, paths = mock_replace.call_args[0]
+    assert playlist_id == 7
+    assert paths == ["/music/a.mp3"]
+
+
+def test_refresh_maps_vuio_error_to_502():
+    with patch.object(vuio_client, "replace_playlist_tracks",
+                      side_effect=vuio_client.VuioError("down")):
+        with TestClient(app_module.app) as client:
+            response = client.post("/api/playlists/7/refresh",
+                                   json={"mode": "manual", "criteria": {"min_bpm": 10}})
+    assert response.status_code == 502
+
+
 def test_create_playlist_maps_vuio_error_to_502():
     with patch.object(vuio_client, "create_playlist", side_effect=vuio_client.VuioError("down")):
         with TestClient(app_module.app) as client:
@@ -173,6 +202,9 @@ if __name__ == "__main__":
     test_preview_unknown_seed_returns_404()
     test_preview_smart_mode_requires_mood_prompt()
     test_preview_smart_mode_ranks_by_vibe()
+    test_api_defaults_match_the_apps_own_behaviour()
+    test_refresh_replaces_the_playlist_contents()
+    test_refresh_maps_vuio_error_to_502()
     test_create_playlist_maps_vuio_error_to_502()
     test_create_playlist_success()
     test_renderers_endpoint()

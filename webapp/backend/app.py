@@ -39,10 +39,12 @@ class PreviewRequest(BaseModel):
     seed_path: Optional[str] = None
     mood_prompt: Optional[str] = None
     criteria: Optional[dict] = None
+    # These defaults are the behaviour, not a UI preference - a caller reaching
+    # for the API directly should get the same playlist the app would build.
     # Seed mode only: 0 ranks purely by sound, 1 purely by taste.
-    taste_weight: float = 0.0
+    taste_weight: float = 0.3
     # Share of the list reserved for tracks the Apple export never scored.
-    discovery: float = 0.0
+    discovery: float = 0.1
     limit: int = 30
 
 
@@ -81,8 +83,9 @@ def retry_failed_tracks():
     return {"retried": count}
 
 
-@app.post("/api/playlists/preview")
-def preview_playlist(req: PreviewRequest):
+def select_tracks(req: PreviewRequest) -> list:
+    """Run one playlist recipe. Shared by preview and refresh so a refreshed
+    playlist is composed exactly like the preview the user approved."""
     tracks = app.state.tracks
     if not tracks:
         raise HTTPException(status_code=404, detail="Keine analysierten Tracks vorhanden")
@@ -133,6 +136,11 @@ def preview_playlist(req: PreviewRequest):
     else:
         raise HTTPException(status_code=400, detail=f"Unbekannter Modus: {req.mode}")
 
+    return matches
+
+
+@app.post("/api/playlists/preview")
+def preview_playlist(req: PreviewRequest):
     return {"tracks": [
         {
             "path": t["path"], "bpm": t["bpm"], "key": t["key"],
@@ -140,7 +148,7 @@ def preview_playlist(req: PreviewRequest):
             "mood_aggressive": t["mood_aggressive"], "mood_relaxed": t["mood_relaxed"],
             "mood_party": t["mood_party"], "percentile": t.get("percentile"),
         }
-        for t in matches
+        for t in select_tracks(req)
     ]}
 
 
@@ -159,6 +167,22 @@ def list_renderers():
         return {"renderers": vuio_client.list_renderers()}
     except vuio_client.VuioError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.post("/api/playlists/{playlist_id}/refresh")
+def refresh_playlist(playlist_id: int, req: PreviewRequest):
+    """Rebuild an existing VUIO playlist from the same recipe.
+
+    Discovery slots are drawn fresh each run, so a scheduled refresh keeps
+    putting unheard music in front of you without a new playlist appearing
+    every time.
+    """
+    paths = [t["path"] for t in select_tracks(req)]
+    try:
+        count = vuio_client.replace_playlist_tracks(playlist_id, paths)
+    except vuio_client.VuioError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return {"playlist_id": playlist_id, "track_count": count}
 
 
 @app.post("/api/playlists/{playlist_id}/cast")

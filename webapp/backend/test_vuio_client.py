@@ -123,6 +123,46 @@ def test_find_file_id_raises_vuio_error_on_malformed_response():
             pass
 
 
+def test_replace_playlist_tracks_removes_old_then_adds_new():
+    calls = []
+
+    def fake(name, arguments):
+        calls.append((name, arguments))
+        if name == "search_media":
+            return {"files": [{"id": 99, "path": "/music/new.mp3"}]}
+        if name == "get_playlist_tracks":
+            return {"tracks": [{"id": 1}, {"id": 2}]}
+        return {}
+
+    with patch("vuio_client._call_tool", side_effect=fake):
+        count = vuio_client.replace_playlist_tracks(7, ["/music/new.mp3"])
+
+    assert count == 1
+    names = [n for n, _ in calls]
+    assert names.count("remove_from_playlist") == 2
+    assert names.index("add_to_playlist") > names.index("remove_from_playlist")
+    assert calls[-1] == ("add_to_playlist", {"playlist_id": 7, "media_file_ids": [99]})
+
+
+def test_replace_playlist_tracks_keeps_old_contents_if_a_track_is_missing():
+    """Resolution happens first, so a bad path cannot leave the playlist empty."""
+    calls = []
+
+    def fake(name, arguments):
+        calls.append(name)
+        if name == "search_media":
+            return {"files": []}
+        return {"tracks": [{"id": 1}]}
+
+    with patch("vuio_client._call_tool", side_effect=fake):
+        try:
+            vuio_client.replace_playlist_tracks(7, ["/music/gone.mp3"])
+            assert False, "expected VuioError"
+        except vuio_client.VuioError:
+            pass
+    assert "remove_from_playlist" not in calls
+
+
 def test_create_playlist_raises_vuio_error_on_malformed_response():
     with patch("vuio_client._call_tool", return_value={}):
         try:
@@ -143,5 +183,7 @@ if __name__ == "__main__":
     test_call_tool_raises_vuio_error_on_non_json_response()
     test_list_renderers_raises_vuio_error_on_malformed_response()
     test_find_file_id_raises_vuio_error_on_malformed_response()
+    test_replace_playlist_tracks_removes_old_then_adds_new()
+    test_replace_playlist_tracks_keeps_old_contents_if_a_track_is_missing()
     test_create_playlist_raises_vuio_error_on_malformed_response()
     print("All vuio_client tests passed.")
