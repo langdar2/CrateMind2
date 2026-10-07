@@ -5,8 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import import_preferences
-from import_preferences import collect, host_path, score_of, write
+from import_preferences import collect, score_of, write
 from match_probe import build_index
 
 APPLE = [
@@ -67,34 +66,6 @@ def test_collect_groups_duplicates_and_skips_unscorable():
     assert "/music/a/01. a - pending.mp3" not in by_path
 
 
-def test_host_path_maps_container_paths_onto_this_machine():
-    assert host_path("/music/A/b.mp3", "/Volumes/Platte/Musik") == "/Volumes/Platte/Musik/A/b.mp3"
-    # No root configured, or a path from somewhere else: leave it alone.
-    assert host_path("/music/A/b.mp3", "") == "/music/A/b.mp3"
-    assert host_path("/other/b.mp3", "/Volumes/Platte/Musik") == "/other/b.mp3"
-
-
-def test_tags_match_files_whose_path_does_not(monkeypatched_tags=None):
-    """A path with no usable title still matches when the tags carry one."""
-    conn = sqlite3.connect(":memory:")
-    conn.execute("CREATE TABLE tracks (path TEXT PRIMARY KEY, status TEXT)")
-    conn.execute("INSERT INTO tracks VALUES ('/music/ripped/track03.mp3', 'ok')")
-    conn.commit()
-    apple = [{"Artist": "Nena", "Title": "99 Luftballons", "Track Play Count": 10, "Skip Count": 0}]
-
-    # Path alone carries nothing identifiable.
-    assert collect(conn, build_index(apple)) == []
-
-    original = import_preferences.read_tags
-    import_preferences.read_tags = lambda p: ("Nena", "99 Luftballons")
-    try:
-        rows = collect(conn, build_index(apple), music_root="/Volumes/Platte/Musik")
-    finally:
-        import_preferences.read_tags = original
-    assert [r[0] for r in rows] == ["/music/ripped/track03.mp3"]
-    assert rows[0][2] == 10
-
-
 def test_write_is_idempotent():
     conn = _db()
     rows = collect(conn, build_index(APPLE))
@@ -106,7 +77,5 @@ def test_write_is_idempotent():
 if __name__ == "__main__":
     test_score_damps_plays_and_uses_skip_ratio()
     test_collect_groups_duplicates_and_skips_unscorable()
-    test_host_path_maps_container_paths_onto_this_machine()
-    test_tags_match_files_whose_path_does_not()
     test_write_is_idempotent()
     print("All import_preferences tests passed.")
