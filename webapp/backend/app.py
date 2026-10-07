@@ -1,4 +1,5 @@
 import os
+import random
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -40,6 +41,8 @@ class PreviewRequest(BaseModel):
     criteria: Optional[dict] = None
     # Seed mode only: 0 ranks purely by sound, 1 purely by taste.
     taste_weight: float = 0.0
+    # Share of the list reserved for tracks the Apple export never scored.
+    discovery: float = 0.0
     limit: int = 30
 
 
@@ -85,7 +88,8 @@ def preview_playlist(req: PreviewRequest):
         raise HTTPException(status_code=404, detail="Keine analysierten Tracks vorhanden")
 
     if req.mode == "manual":
-        matches = presets.filter_by_criteria(tracks, req.criteria or {}, limit=req.limit)
+        matches = presets.filter_by_criteria(tracks, req.criteria or {}, limit=req.limit,
+                                             discovery=req.discovery)
     elif req.mode == "prompt":
         if not req.prompt:
             raise HTTPException(status_code=400, detail="prompt fehlt")
@@ -93,7 +97,8 @@ def preview_playlist(req: PreviewRequest):
             criteria = omlx_client.parse_prompt_to_criteria(req.prompt)
         except omlx_client.OmlxError as e:
             raise HTTPException(status_code=502, detail=str(e)) from e
-        matches = presets.filter_by_criteria(tracks, criteria, limit=req.limit)
+        matches = presets.filter_by_criteria(tracks, criteria, limit=req.limit,
+                                             discovery=req.discovery)
     elif req.mode == "seed":
         seed = next((t for t in tracks if t["path"] == req.seed_path), None)
         if seed is None:
@@ -112,8 +117,14 @@ def preview_playlist(req: PreviewRequest):
         else:
             # Without a seed there is nothing to make the shortlist relevant, so
             # send Jev the best-liked tracks rather than whatever the database
-            # happens to return first.
-            candidates = sorted(tracks, key=lambda t: t["score"] or 0, reverse=True)[:MAX_SMART_CANDIDATES]
+            # happens to return first - but reserve a slice for music the Apple
+            # export never scored, which would otherwise never reach Jev at all.
+            scored = sorted((t for t in tracks if t["score"] is not None),
+                            key=lambda t: t["score"], reverse=True)
+            unscored = [t for t in tracks if t["score"] is None]
+            reserved = round(MAX_SMART_CANDIDATES * req.discovery)
+            picks = random.sample(unscored, min(reserved, len(unscored)))
+            candidates = scored[:MAX_SMART_CANDIDATES - len(picks)] + picks
         candidates = presets.dedupe_by_song(candidates)
         try:
             matches = typesafe_client.rank_by_vibe(req.mood_prompt, candidates, limit=req.limit)

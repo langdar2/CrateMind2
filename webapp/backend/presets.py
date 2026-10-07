@@ -1,3 +1,8 @@
+import random
+
+# Criteria that only a track with Apple play data can ever satisfy.
+TASTE_KEYS = ("min_percentile", "max_percentile")
+
 # The one place that defines what a playlist can be filtered on. omlx_client
 # builds the prompt vocabulary from this, so a column added here is immediately
 # available to free-text prompts too.
@@ -28,12 +33,44 @@ def dedupe_by_song(tracks: list) -> list:
     return out
 
 
-def filter_by_criteria(tracks: list, criteria: dict, limit: int = 30) -> list:
-    checks = [(_THRESHOLD_CHECKS[key], value) for key, value in criteria.items() if key in _THRESHOLD_CHECKS]
-    matches = [track for track in tracks if all(check(track, value) for check, value in checks)]
+def _checks(criteria: dict, skip=()) -> list:
+    return [(_THRESHOLD_CHECKS[key], value) for key, value in criteria.items()
+            if key in _THRESHOLD_CHECKS and key not in skip]
+
+
+def _weave(keep: list, extras: list) -> list:
+    """Spread extras through keep instead of appending them in a clump."""
+    out = list(keep)
+    if not extras:
+        return out
+    step = max(1, len(out) // len(extras))
+    for i, extra in enumerate(extras):
+        out.insert(min(len(out), step * (i + 1) + i), extra)
+    return out
+
+
+def filter_by_criteria(tracks: list, criteria: dict, limit: int = 30,
+                       discovery: float = 0.0) -> list:
+    matches = [t for t in tracks if all(c(t, v) for c, v in _checks(criteria))]
     # Only order by taste once the caller asks for it; otherwise scored tracks
     # would always crowd out everything the Apple export never saw. Ordering
     # uses the raw score, which has none of the percentile's rounding ties.
     if criteria.get("min_percentile"):
         matches.sort(key=lambda t: t["score"], reverse=True)
-    return dedupe_by_song(matches)[:limit]
+    matches = dedupe_by_song(matches)
+
+    # A percentile threshold can never admit a track that has no percentile,
+    # so asking for favourites silently rules out the ~79% of the library the
+    # Apple export never saw. Hand part of the list back to those, picked from
+    # the tracks that pass every *other* criterion, so they fit the same brief.
+    wanted = round(limit * discovery) if discovery > 0 else 0
+    if not wanted or not any(k in criteria for k in TASTE_KEYS):
+        return matches[:limit]
+
+    taken = {t["path"] for t in matches[:limit - wanted]}
+    pool = [t for t in tracks
+            if t.get("percentile") is None and t["path"] not in taken
+            and all(c(t, v) for c, v in _checks(criteria, skip=TASTE_KEYS))]
+    # Random, so repeated previews keep surfacing different unheard tracks.
+    picks = random.sample(pool, min(wanted, len(pool)))
+    return _weave(matches[:limit - len(picks)], dedupe_by_song(picks))

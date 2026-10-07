@@ -34,6 +34,7 @@ export default function Playlists() {
   const [moodPrompt, setMoodPrompt] = useState("");
   const [bpmRange, setBpmRange] = useState([80, 160]);
   const [minPercentile, setMinPercentile] = useState(0);
+  const [discovery, setDiscovery] = useState(10);
   const [moodMins, setMoodMins] = useState({});
   const [preview, setPreview] = useState([]);
   const [playlistName, setPlaylistName] = useState("");
@@ -88,9 +89,9 @@ export default function Playlists() {
       const result = await previewPlaylist(
         body ||
           (mode === "manual"
-            ? { mode, criteria: manualCriteria() }
+            ? { mode, criteria: manualCriteria(), discovery: discovery / 100 }
             : mode === "prompt"
-            ? { mode, prompt }
+            ? { mode, prompt, discovery: discovery / 100 }
             : mode === "smart"
             ? { mode, seed_path: seedPath || undefined, mood_prompt: moodPrompt }
             : { mode, seed_path: seedPath, taste_weight: tasteWeight / 100 })
@@ -105,10 +106,13 @@ export default function Playlists() {
   // slider change with a short debounce; other modes keep the explicit button.
   useEffect(() => {
     if (mode !== "manual" || hasTracks !== true) return;
-    const timer = setTimeout(() => runPreview({ mode, criteria: manualCriteria() }), 300);
+    const timer = setTimeout(
+      () => runPreview({ mode, criteria: manualCriteria(), discovery: discovery / 100 }),
+      300
+    );
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, hasTracks, bpmRange, minPercentile, moodMins]);
+  }, [mode, hasTracks, bpmRange, minPercentile, discovery, moodMins]);
 
   const toggleMoodField = (key, checked) => {
     setMoodMins((prev) => {
@@ -192,6 +196,22 @@ export default function Playlists() {
               />
               <span className="slider-value">
                 {minPercentile > 0 ? `Top ${100 - minPercentile}%` : "egal"}
+              </span>
+            </div>
+            <div className="slider-row">
+              <span className="label">Entdeckung</span>
+              <input
+                type="range"
+                min="0"
+                max="50"
+                step="5"
+                disabled={minPercentile === 0}
+                value={discovery}
+                onChange={(e) => setDiscovery(+e.target.value)}
+                style={{ gridColumn: "2 / 4" }}
+              />
+              <span className="slider-value">
+                {minPercentile === 0 ? "—" : discovery > 0 ? `${discovery}% neu` : "aus"}
               </span>
             </div>
             {MOOD_FIELDS.map((f) => (

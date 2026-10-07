@@ -94,6 +94,48 @@ def test_dedupe_applies_before_the_limit():
     assert [t["song_key"] for t in result] == ["same", "other"]
 
 
+def _mixed_pool():
+    """40 well-liked tracks plus 40 the Apple export never scored."""
+    liked = [_scored(120 + i, score=5.0 - i * 0.01, percentile=99) for i in range(40)]
+    unknown = [_scored(120 + i, score=None, percentile=None) for i in range(40, 80)]
+    for i, t in enumerate(liked + unknown):
+        t["path"] = f"/x/{i}.mp3"
+    return liked + unknown
+
+
+def test_discovery_reserves_slots_for_unscored_tracks():
+    result = presets.filter_by_criteria(_mixed_pool(), {"min_percentile": 50},
+                                        limit=20, discovery=0.25)
+    unscored = [t for t in result if t["percentile"] is None]
+    assert len(result) == 20
+    assert len(unscored) == 5, len(unscored)
+
+
+def test_discovery_picks_differ_between_calls():
+    pool = _mixed_pool()
+    runs = set()
+    for _ in range(6):
+        result = presets.filter_by_criteria(pool, {"min_percentile": 50}, limit=20, discovery=0.25)
+        runs.add(tuple(t["path"] for t in result if t["percentile"] is None))
+    assert len(runs) > 1, "discovery slots should vary between previews"
+
+
+def test_discovery_respects_the_other_criteria():
+    """Unheard tracks still have to fit the brief, only taste is waived."""
+    pool = _mixed_pool()
+    result = presets.filter_by_criteria(pool, {"min_percentile": 50, "min_bpm": 150},
+                                        limit=20, discovery=0.5)
+    assert all(t["bpm"] >= 150 for t in result), [t["bpm"] for t in result]
+
+
+def test_discovery_does_nothing_without_a_taste_filter():
+    """Without a taste threshold the list is already full of unheard music."""
+    pool = _mixed_pool()
+    a = presets.filter_by_criteria(pool, {"min_bpm": 100}, limit=20, discovery=0.5)
+    b = presets.filter_by_criteria(pool, {"min_bpm": 100}, limit=20, discovery=0.5)
+    assert [t["path"] for t in a] == [t["path"] for t in b]
+
+
 def test_unknown_criteria_keys_are_ignored():
     tracks = [_track(bpm=140, danceability=0.9, mood_party=0.9, mood_relaxed=0.1)]
     result = presets.filter_by_criteria(tracks, {"vibe": "great"})
@@ -110,5 +152,9 @@ if __name__ == "__main__":
     test_without_min_percentile_order_is_untouched()
     test_dedupe_keeps_first_copy_and_all_unidentified()
     test_dedupe_applies_before_the_limit()
+    test_discovery_reserves_slots_for_unscored_tracks()
+    test_discovery_picks_differ_between_calls()
+    test_discovery_respects_the_other_criteria()
+    test_discovery_does_nothing_without_a_taste_filter()
     test_unknown_criteria_keys_are_ignored()
     print("All presets tests passed.")
