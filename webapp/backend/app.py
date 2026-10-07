@@ -38,6 +38,8 @@ class PreviewRequest(BaseModel):
     seed_path: Optional[str] = None
     mood_prompt: Optional[str] = None
     criteria: Optional[dict] = None
+    # Seed mode only: 0 ranks purely by sound, 1 purely by taste.
+    taste_weight: float = 0.0
     limit: int = 30
 
 
@@ -96,7 +98,9 @@ def preview_playlist(req: PreviewRequest):
         seed = next((t for t in tracks if t["path"] == req.seed_path), None)
         if seed is None:
             raise HTTPException(status_code=404, detail=f"Seed-Track nicht gefunden: {req.seed_path}")
-        matches = presets.dedupe_by_song(similarity.top_similar(seed, tracks, limit=req.limit))
+        matches = presets.dedupe_by_song(
+            similarity.top_similar(seed, tracks, limit=req.limit, taste_weight=req.taste_weight)
+        )
     elif req.mode == "smart":
         if not req.mood_prompt:
             raise HTTPException(status_code=400, detail="mood_prompt fehlt")

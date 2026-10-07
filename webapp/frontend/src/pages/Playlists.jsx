@@ -30,6 +30,7 @@ export default function Playlists() {
   const [seedQuery, setSeedQuery] = useState("");
   const [seedResults, setSeedResults] = useState([]);
   const [seedPath, setSeedPath] = useState("");
+  const [tasteWeight, setTasteWeight] = useState(30);
   const [moodPrompt, setMoodPrompt] = useState("");
   const [bpmRange, setBpmRange] = useState([80, 160]);
   const [minPercentile, setMinPercentile] = useState(0);
@@ -92,7 +93,7 @@ export default function Playlists() {
             ? { mode, prompt }
             : mode === "smart"
             ? { mode, seed_path: seedPath || undefined, mood_prompt: moodPrompt }
-            : { mode, seed_path: seedPath })
+            : { mode, seed_path: seedPath, taste_weight: tasteWeight / 100 })
       );
       setPreview(result.tracks);
     } catch (e) {
@@ -251,6 +252,24 @@ export default function Playlists() {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {mode === "seed" && (
+          <div className="slider-row" style={{ marginTop: "12px" }}>
+            <span className="label">Klang ↔ Geschmack</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={tasteWeight}
+              onChange={(e) => setTasteWeight(+e.target.value)}
+              style={{ gridColumn: "2 / 4" }}
+            />
+            <span className="slider-value">
+              {tasteWeight === 0 ? "nur Klang" : tasteWeight === 100 ? "nur Geschmack" : `${tasteWeight}%`}
+            </span>
           </div>
         )}
 
