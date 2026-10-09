@@ -59,6 +59,15 @@ def get_connection(db_path: str) -> sqlite3.Connection:
         )
         """
     )
+    # The analysis service owns `tracks` and migrates it on ITS next start,
+    # which may be after this one -- and a missing column here is not a
+    # degraded playlist but a webapp that will not boot at all. Same migration,
+    # idempotent, so whoever starts first does it.
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(tracks)").fetchall()}
+    if columns and "first_seen" not in columns:
+        conn.execute("ALTER TABLE tracks ADD COLUMN first_seen REAL")
+        conn.execute("UPDATE tracks SET first_seen = mtime WHERE first_seen IS NULL")
+        conn.commit()
     # Plays counted by the player as they happen. Like `ratings`, kept out of
     # `preferences`, which import_preferences rebuilds wholesale from Apple's
     # export; these are the plays Apple never sees.

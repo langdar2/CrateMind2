@@ -1,3 +1,4 @@
+import sqlite3
 import sys
 import tempfile
 import time
@@ -306,7 +307,42 @@ def test_unplayed_tracks_keep_a_null_score():
     assert all(t["score"] is None for t in db.load_ok_tracks(conn))
 
 
+def test_webapp_migrates_tracks_when_analysis_has_not_yet():
+    """The webapp must boot against a database the analysis service has not
+    upgraded yet -- it starts first about half the time, and a missing column
+    is a crash on startup, not a degraded playlist."""
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    pre = sqlite3.connect(tmp.name)
+    pre.executescript(
+        """
+        CREATE TABLE tracks (path TEXT PRIMARY KEY, mtime REAL NOT NULL,
+          size INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+          last_scanned REAL NOT NULL);
+        CREATE TABLE features (path TEXT PRIMARY KEY, bpm REAL, key TEXT,
+          mood_happy REAL, mood_aggressive REAL, mood_relaxed REAL,
+          mood_party REAL, danceability REAL, embedding BLOB);
+        INSERT INTO tracks VALUES ('/music/a.mp3', 12345.0, 10, 'ok', 99999.0);
+        """
+    )
+    pre.commit()
+    pre.close()
+
+    conn = db.get_connection(tmp.name)
+    assert conn.execute("SELECT first_seen FROM tracks").fetchone()[0] == 12345.0
+    db.load_ok_tracks(conn)      # the query that failed on the host
+    db.get_connection(tmp.name)  # idempotent
+
+
+def test_connecting_to_an_empty_database_does_not_fail():
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    db.get_connection(tmp.name)  # analysis will create tracks later
+
+
 if __name__ == "__main__":
+    test_webapp_migrates_tracks_when_analysis_has_not_yet()
+    test_connecting_to_an_empty_database_does_not_fail()
     test_counted_plays_rank_like_apple_plays()
     test_counted_plays_add_to_apple_plays_for_the_same_track()
     test_skips_lower_the_score_and_plays_survive_a_reimport()
