@@ -167,6 +167,87 @@ def test_unknown_criteria_keys_are_ignored():
     assert len(result) == 1
 
 
+NOW = 1_800_000_000.0
+DAY = 86400.0
+
+
+def _dated(name, days_ago, artist="a", **extra):
+    # "artist" is what cap_per_artist groups on; load_ok_tracks always sets it.
+    t = {"path": f"/music/{artist} - Album/{name}.mp3", "artist": artist,
+         "first_seen": NOW - days_ago * DAY, "song_key": name}
+    t.update(extra)
+    return t
+
+
+def test_fresh_quota_pulls_in_new_music_the_mode_buried():
+    old = [_dated(f"old{i}", 400, artist=f"a{i}") for i in range(10)]
+    new = [_dated(f"new{i}", 3, artist=f"b{i}") for i in range(5)]
+
+    out = presets.weave_in_fresh(old, old + new, limit=10, share=0.2,
+                                 max_age_days=60, now=NOW)
+
+    assert len(out) == 10
+    fresh = [t for t in out if t in new]
+    assert len(fresh) == 2                      # 20% of 10
+    assert out[0] in old                        # woven in, not prepended
+    assert len({t["path"] for t in out}) == 10  # no duplicates
+
+
+def test_fresh_quota_counts_new_music_the_mode_already_picked():
+    """The quota is a floor on new music, not an extra helping of it."""
+    new = [_dated(f"new{i}", 5, artist=f"b{i}") for i in range(10)]
+    out = presets.weave_in_fresh(new, new, limit=10, share=0.2,
+                                 max_age_days=60, now=NOW)
+    assert out == new[:10]  # already all fresh, nothing to add
+
+
+def test_fresh_quota_prefers_the_newest_and_skips_banned():
+    old = [_dated(f"old{i}", 400, artist=f"a{i}") for i in range(10)]
+    newest = _dated("newest", 1, artist="b")
+    older_new = _dated("older_new", 50, artist="c")
+    banned = _dated("banned", 2, artist="d", rating=-1)
+
+    out = presets.weave_in_fresh(old, old + [older_new, banned, newest],
+                                 limit=10, share=0.1, max_age_days=60, now=NOW)
+
+    assert newest in out
+    assert older_new not in out   # only one slot, newest wins
+    assert banned not in out
+
+
+def test_fresh_quota_ignores_tracks_outside_the_window_and_undated_ones():
+    old = [_dated(f"old{i}", 400, artist=f"a{i}") for i in range(10)]
+    stale = _dated("stale", 90, artist="b")
+    undated = {"path": "/music/c - Album/undated.mp3", "first_seen": None}
+
+    out = presets.weave_in_fresh(old, old + [stale, undated], limit=10,
+                                 share=0.2, max_age_days=60, now=NOW)
+
+    assert out == old[:10]  # nothing qualifies as fresh
+
+
+def test_fresh_share_zero_leaves_the_list_alone():
+    old = [_dated(f"old{i}", 400, artist=f"a{i}") for i in range(10)]
+    new = [_dated("new", 1, artist="b")]
+    assert presets.weave_in_fresh(old, old + new, limit=5, share=0.0,
+                                  max_age_days=60, now=NOW) == old[:5]
+
+
+def test_fresh_quota_still_returns_a_full_list_when_the_artist_cap_bites():
+    """A big new import is all one artist, so the cap drops most of it; the
+    list must be topped back up rather than handed back short."""
+    old = [_dated(f"old{i}", 400, artist=f"a{i}") for i in range(20)]
+    new = [_dated(f"new{i}", 2, artist="newband") for i in range(10)]
+
+    out = presets.weave_in_fresh(old, old + new, limit=20, share=0.5,
+                                 max_age_days=60, now=NOW)
+
+    assert len(out) == 20
+    assert len({t["path"] for t in out}) == 20
+    newband = [t for t in out if t["artist"] == "newband"]
+    assert len(newband) == presets.MAX_PER_ARTIST
+
+
 if __name__ == "__main__":
     test_filters_by_bpm_and_danceability()
     test_filters_by_relaxed_mood()

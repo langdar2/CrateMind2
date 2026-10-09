@@ -228,7 +228,7 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
         """
         SELECT t.path, f.bpm, f.key, f.mood_happy, f.mood_aggressive, f.mood_relaxed,
                f.mood_party, f.danceability, f.embedding,
-               p.plays, p.skips, p.score, p.song_key
+               p.plays, p.skips, p.score, p.song_key, t.first_seen
         FROM tracks t
         JOIN features f ON f.path = t.path
         LEFT JOIN preferences p ON p.path = t.path
@@ -257,7 +257,7 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
 
     tracks = []
     for (path, bpm, key, happy, aggressive, relaxed, party, dance, emb_blob,
-         _apple_plays, _apple_skips, _apple_score, song_key) in rows:
+         _apple_plays, _apple_skips, _apple_score, song_key, first_seen) in rows:
         rating = ratings.get(path, 0)
         score = scores.get(path)  # None while nothing has ever played it
         percentile = percentiles.get(path)
@@ -280,6 +280,9 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
             "played_percentile": percentile,
             "rating": rating,
             "song_key": song_key,
+            # When the scanner first saw the file; None for rows written
+            # before the column existed and never rescanned since.
+            "first_seen": first_seen,
             "artist": artist_of(path),
             "embedding": np.frombuffer(emb_blob, dtype=np.float32),
         })

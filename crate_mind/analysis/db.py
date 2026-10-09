@@ -8,7 +8,11 @@ CREATE TABLE IF NOT EXISTS tracks (
     mtime REAL NOT NULL,
     size INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
-    last_scanned REAL NOT NULL
+    last_scanned REAL NOT NULL,
+    -- When the scanner first saw this file. Unlike last_scanned (overwritten
+    -- every scan) and mtime (reset by a tag edit or an rsync), this is the
+    -- one honest "how long have I had this" the library has.
+    first_seen REAL
 );
 
 CREATE TABLE IF NOT EXISTS features (
@@ -34,6 +38,12 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     if "error_message" not in columns:
         conn.execute("ALTER TABLE tracks ADD COLUMN error_message TEXT")
         conn.commit()
+    if "first_seen" not in columns:
+        conn.execute("ALTER TABLE tracks ADD COLUMN first_seen REAL")
+        # Existing rows: the file's mtime is the best guess available after
+        # the fact. New arrivals get the real thing from here on.
+        conn.execute("UPDATE tracks SET first_seen = mtime WHERE first_seen IS NULL")
+        conn.commit()
     return conn
 
 
@@ -54,10 +64,12 @@ def all_track_paths(conn: sqlite3.Connection) -> set:
 def upsert_track(
     conn: sqlite3.Connection, path: str, mtime: float, size: int, status: str, error_message: str = None
 ) -> None:
+    now = time.time()
     conn.execute(
         """
-        INSERT INTO tracks (path, mtime, size, status, last_scanned, error_message)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO tracks (path, mtime, size, status, last_scanned, error_message,
+                            first_seen)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(path) DO UPDATE SET
             mtime = excluded.mtime,
             size = excluded.size,
@@ -65,7 +77,7 @@ def upsert_track(
             last_scanned = excluded.last_scanned,
             error_message = excluded.error_message
         """,
-        (path, mtime, size, status, time.time(), error_message),
+        (path, mtime, size, status, now, error_message, now),
     )
     conn.commit()
 

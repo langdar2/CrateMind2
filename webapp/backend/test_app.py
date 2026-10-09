@@ -98,6 +98,33 @@ def test_playing_an_unknown_track_is_404():
                            json={"path": "/music/nope.mp3"}).status_code == 404
 
 
+def test_fresh_quota_reaches_playlists_through_the_api():
+    """A newly imported track must show up even though nothing has played it."""
+    with TestClient(app_module.app) as client:
+        import time as _t
+        fresh = dict(app_module.app.state.tracks[0])
+        fresh.update({"path": "/music/New Band - Debut/01. New Band - Song.mp3",
+                      "first_seen": _t.time(), "song_key": "new", "score": None,
+                      "percentile": None, "rating": 0, "artist": "new band"})
+        old = dict(app_module.app.state.tracks[0])
+        old.update({"first_seen": _t.time() - 400 * 86400})
+        app_module.app.state.tracks = [old, fresh]
+        try:
+            r = client.post("/api/playlists/preview",
+                            json={"mode": "manual", "criteria": {}, "limit": 2,
+                                  "fresh_share": 0.5, "fresh_days": 60})
+            assert r.status_code == 200
+            assert any(t["path"] == fresh["path"] for t in r.json()["tracks"])
+
+            # and with the quota off it is ranked normally, not forced in
+            r = client.post("/api/playlists/preview",
+                            json={"mode": "manual", "criteria": {}, "limit": 1,
+                                  "fresh_share": 0.0})
+            assert len(r.json()["tracks"]) == 1
+        finally:
+            app_module.app.state.tracks = db.load_ok_tracks(app_module.app.state.conn)
+
+
 def test_stats_endpoint_returns_counts():
     with TestClient(app_module.app) as client:
         response = client.get("/api/stats")

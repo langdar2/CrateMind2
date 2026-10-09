@@ -1,5 +1,6 @@
 import os
 import random
+import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -45,6 +46,12 @@ class PreviewRequest(BaseModel):
     taste_weight: float = 0.3
     # Share of the list reserved for tracks the Apple export never scored.
     discovery: float = 0.1
+    # Share reserved for recently imported music, and how long "recent" lasts.
+    # Separate from discovery: that one is about music never *played*, this one
+    # about music newly *owned* - a fresh import by a long-time favourite
+    # artist is well-scored and still deserves to surface.
+    fresh_share: float = 0.15
+    fresh_days: float = 60.0
     limit: int = 30
 
 
@@ -140,9 +147,14 @@ def select_tracks(req: PreviewRequest) -> list:
     # seedable, so rating a track still lets you ask for more like it.
     tracks = [t for t in tracks if t.get("rating", 0) >= 0 or t["path"] == req.seed_path]
 
+    # What each mode considered suitable, so the fresh-music quota below can
+    # draw from the same brief rather than from the whole library.
+    fitting = tracks
     if req.mode == "manual":
         matches = presets.filter_by_criteria(tracks, req.criteria or {}, limit=req.limit,
                                              discovery=req.discovery)
+        fitting = presets.filter_by_criteria(tracks, req.criteria or {},
+                                             limit=len(tracks))
     elif req.mode == "prompt":
         if not req.prompt:
             raise HTTPException(status_code=400, detail="prompt fehlt")
@@ -152,6 +164,7 @@ def select_tracks(req: PreviewRequest) -> list:
             raise HTTPException(status_code=502, detail=str(e)) from e
         matches = presets.filter_by_criteria(tracks, criteria, limit=req.limit,
                                              discovery=req.discovery)
+        fitting = presets.filter_by_criteria(tracks, criteria, limit=len(tracks))
     elif req.mode == "seed":
         seed = next((t for t in tracks if t["path"] == req.seed_path), None)
         if seed is None:
@@ -160,6 +173,7 @@ def select_tracks(req: PreviewRequest) -> list:
         similar = similarity.top_similar(seed, tracks, limit=req.limit * 3,
                                          taste_weight=req.taste_weight)
         matches = presets.cap_per_artist(presets.dedupe_by_song(similar))[:req.limit]
+        fitting = similar  # already ranked by closeness to the seed
     elif req.mode == "smart":
         if not req.mood_prompt:
             raise HTTPException(status_code=400, detail="mood_prompt fehlt")
@@ -180,6 +194,7 @@ def select_tracks(req: PreviewRequest) -> list:
             picks = random.sample(unscored, min(reserved, len(unscored)))
             candidates = scored[:MAX_SMART_CANDIDATES - len(picks)] + picks
         candidates = presets.cap_per_artist(presets.dedupe_by_song(candidates))
+        fitting = candidates
         try:
             matches = typesafe_client.rank_by_vibe(req.mood_prompt, candidates, limit=req.limit)
         except typesafe_client.TypesafeError as e:
@@ -187,7 +202,8 @@ def select_tracks(req: PreviewRequest) -> list:
     else:
         raise HTTPException(status_code=400, detail=f"Unbekannter Modus: {req.mode}")
 
-    return matches
+    return presets.weave_in_fresh(matches, fitting, req.limit, req.fresh_share,
+                                  req.fresh_days, time.time())
 
 
 @app.post("/api/playlists/preview")

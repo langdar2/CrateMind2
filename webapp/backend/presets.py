@@ -71,6 +71,47 @@ def _weave(keep: list, extras: list) -> list:
     return out
 
 
+def is_fresh(track: dict, now: float, max_age_days: float) -> bool:
+    first_seen = track.get("first_seen")
+    return first_seen is not None and (now - first_seen) <= max_age_days * 86400
+
+
+def weave_in_fresh(matches: list, candidates: list, limit: int, share: float,
+                   max_age_days: float, now: float) -> list:
+    """Reserve part of the list for recently imported music.
+
+    New arrivals have no play history, so taste ranking buries them exactly
+    when they are most interesting. A quota, rather than a score bonus, is
+    what guarantees they actually appear. They still have to pass the same
+    brief: `candidates` is the pool the mode already considered suitable.
+    """
+    wanted = round(limit * share) if share > 0 else 0
+    if wanted <= 0:
+        return matches[:limit]
+
+    chosen = matches[:limit]
+    already = sum(1 for t in chosen if is_fresh(t, now, max_age_days))
+    wanted -= already
+    if wanted <= 0:
+        return chosen  # the mode picked enough new music on its own
+
+    taken = {t["path"] for t in chosen}
+    pool = [t for t in candidates
+            if t["path"] not in taken and is_fresh(t, now, max_age_days)
+            and t.get("rating", 0) >= 0]
+    # Newest first, so a quota that cannot be filled still favours the freshest.
+    pool.sort(key=lambda t: t["first_seen"], reverse=True)
+    picks = dedupe_by_song(pool)[:wanted]
+    woven = cap_per_artist(_weave(chosen[:limit - len(picks)], picks))
+    # The cap can drop tracks - a big fresh import is all one artist - which
+    # would otherwise hand back a short list. Top it back up from the matches
+    # the quota displaced, which are the next best the mode had.
+    if len(woven) < limit:
+        have = {t["path"] for t in woven}
+        woven += [t for t in matches if t["path"] not in have][:limit - len(woven)]
+    return woven[:limit]
+
+
 def filter_by_criteria(tracks: list, criteria: dict, limit: int = 30,
                        discovery: float = 0.0) -> list:
     matches = [t for t in tracks if all(c(t, v) for c, v in _checks(criteria))]
