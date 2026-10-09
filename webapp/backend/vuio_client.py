@@ -110,6 +110,20 @@ def create_playlist(name: str, track_paths: list) -> int:
     return playlist_id
 
 
+def from_vuio_path(vuio_path: str) -> str:
+    """Inverse of to_vuio_path: VUIO's host path back to the one our DB uses."""
+    if VUIO_MUSIC_DIR != MUSIC_DIR and vuio_path.startswith(VUIO_MUSIC_DIR + "/"):
+        return MUSIC_DIR + vuio_path[len(VUIO_MUSIC_DIR):]
+    return vuio_path
+
+
+def path_for_media_id(media_id: int) -> str:
+    """Our DB path for a VUIO media id, or None if it maps to nothing."""
+    info = _call_tool("get_media_info", {"file_id": media_id})
+    path = info.get("path") if isinstance(info, dict) else None
+    return from_vuio_path(path) if path else None
+
+
 def replace_playlist_tracks(playlist_id: int, track_paths: list) -> int:
     """Swap a playlist's contents, keeping the playlist itself.
 

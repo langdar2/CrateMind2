@@ -95,6 +95,17 @@ def get_connection(db_path: str) -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS local_plays (
+            path TEXT PRIMARY KEY REFERENCES tracks(path),
+            plays INTEGER NOT NULL DEFAULT 0,
+            skips INTEGER NOT NULL DEFAULT 0,
+            seconds REAL NOT NULL DEFAULT 0,
+            last_played REAL NOT NULL
+        )
+        """
+    )
     # Playlist recipes are webapp state rather than analysis output, but a
     # second database file for one small table is not worth the moving parts.
     conn.execute(
@@ -108,6 +119,42 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     )
     conn.commit()
     return conn
+
+
+def record_play(conn: sqlite3.Connection, path: str, seconds: float, completed: bool) -> None:
+    """Count one listening event against a track.
+
+    Kept apart from `preferences`, which the Apple import rewrites wholesale -
+    these counts are the only ones that survive a re-import, and the only
+    source of taste data for the two thirds of the library Apple never saw.
+    """
+    conn.execute(
+        """
+        INSERT INTO local_plays (path, plays, skips, seconds, last_played)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(path) DO UPDATE SET
+            plays = plays + excluded.plays,
+            skips = skips + excluded.skips,
+            seconds = seconds + excluded.seconds,
+            last_played = excluded.last_played
+        """,
+        (path, 1 if completed else 0, 0 if completed else 1, seconds, time.time()),
+    )
+    conn.commit()
+
+
+def fetch_local_plays(conn: sqlite3.Connection, limit: int = 50) -> list:
+    rows = conn.execute(
+        """
+        SELECT path, plays, skips, seconds, last_played
+        FROM local_plays ORDER BY last_played DESC LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [
+        {"path": p, "plays": pl, "skips": sk, "seconds": round(s), "last_played": lp}
+        for p, pl, sk, s, lp in rows
+    ]
 
 
 def save_recipe(conn: sqlite3.Connection, playlist_id: int, recipe: dict) -> None:

@@ -114,6 +114,30 @@ def test_percentile_ranks_scores_among_scored_tracks_only():
     assert tracks["/music/a.mp3"]["percentile"] is None
 
 
+def test_record_play_accumulates_plays_and_skips_separately():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+
+    db.record_play(conn, "/music/a.mp3", seconds=180, completed=True)
+    db.record_play(conn, "/music/a.mp3", seconds=5, completed=False)
+    db.record_play(conn, "/music/a.mp3", seconds=200, completed=True)
+
+    row = conn.execute(
+        "SELECT plays, skips, seconds FROM local_plays WHERE path = ?", ("/music/a.mp3",)
+    ).fetchone()
+    assert row == (2, 1, 385)
+
+
+def test_fetch_local_plays_is_most_recent_first():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    db.record_play(conn, "/music/a.mp3", seconds=100, completed=True)
+    time.sleep(0.01)
+    db.record_play(conn, "/music/b.mp3", seconds=100, completed=True)
+
+    assert [p["path"] for p in db.fetch_local_plays(conn)] == ["/music/b.mp3", "/music/a.mp3"]
+
+
 def test_recipe_round_trips_and_overwrites():
     path = _make_test_db()
     conn = db.get_connection(path)

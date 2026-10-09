@@ -1,3 +1,4 @@
+import asyncio
 import os
 import random
 import time
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 import db
 import graph
 import omlx_client
+import plays
 import presets
 import similarity
 import typesafe_client
@@ -21,6 +23,38 @@ DB_PATH = os.environ.get("DB_PATH", "/data/library.db")
 # ponytail: caps Jev API calls (and cost) per smart preview; raise if the
 # candidate pool ever needs to be broader than the BPM/key/embedding shortlist.
 MAX_SMART_CANDIDATES = 150
+# How often to ask the renderers what is playing. Short enough that a 3-minute
+# track is not mistaken for a skip, long enough to stay cheap.
+PLAYBACK_POLL_SECONDS = 15
+
+
+async def watch_playback():
+    """Poll the renderers and persist finished listening events.
+
+    VUIO has no "track finished" signal, so a play is inferred from the same
+    URL persisting across polls. Runs for the life of the process; every
+    failure is swallowed because a renderer going offline must never take the
+    API down with it.
+    """
+    while True:
+        await asyncio.sleep(PLAYBACK_POLL_SECONDS)
+        try:
+            status = await asyncio.to_thread(vuio_client.get_playback_status)
+            event = app.state.play_tracker.observe(
+                plays.current_media_id(status), time.monotonic()
+            )
+            if event is None:
+                continue
+            media_id, seconds, completed = event
+            path = await asyncio.to_thread(vuio_client.path_for_media_id, media_id)
+            if path:
+                db.record_play(app.state.conn, path, seconds, completed)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Renderer offline, VUIO restarting, a track outside the library:
+            # none of it is worth a crash, and the next poll starts clean.
+            continue
 
 
 @asynccontextmanager
@@ -32,7 +66,12 @@ async def lifespan(app: FastAPI):
     # rather than per request. Picks up new tracks whenever the container
     # restarts; the analysis service writes the DB but cannot reload us.
     app.state.graph = graph.build_index(app.state.tracks)
-    yield
+    app.state.play_tracker = plays.PlayTracker()
+    watcher = asyncio.create_task(watch_playback())
+    try:
+        yield
+    finally:
+        watcher.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -123,6 +162,11 @@ def put_rating(req: RatingRequest):
             t["percentile"] = db.rated_percentile(t["played_percentile"], req.rating)
             break
     return {"path": req.path, "rating": req.rating}
+
+
+@app.get("/api/plays")
+def get_local_plays(limit: int = 50):
+    return {"plays": db.fetch_local_plays(app.state.conn, limit)}
 
 
 @app.get("/api/graph/artists")
