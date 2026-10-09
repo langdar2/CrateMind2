@@ -164,6 +164,39 @@ def put_rating(req: RatingRequest):
     return {"path": req.path, "rating": req.rating}
 
 
+@app.get("/api/now-playing")
+def now_playing():
+    """What is on a renderer right now, resolved to a track.
+
+    Uses the same detection as the play counter, so the status bar cannot
+    disagree with what gets counted. Only reports casts this server knows
+    about; playback started from another app may not show up.
+    """
+    try:
+        status = vuio_client.get_playback_status()
+    except vuio_client.VuioError:
+        return {"playing": None}
+
+    media_id = plays.current_media_id(status)
+    if media_id is None:
+        return {"playing": None}
+
+    renderer = next(
+        (r for r in status.get("renderers") or []
+         if plays.media_id_from_url(r.get("current_url")) == media_id),
+        {},
+    )
+    try:
+        path = vuio_client.path_for_media_id(media_id)
+    except vuio_client.VuioError:
+        path = None
+    return {"playing": {
+        "renderer": renderer.get("friendly_name"),
+        "path": path,
+        "title": path.rsplit("/", 1)[-1].rsplit(".", 1)[0] if path else None,
+    }}
+
+
 @app.get("/api/plays")
 def get_local_plays(limit: int = 50):
     return {"plays": db.fetch_local_plays(app.state.conn, limit)}

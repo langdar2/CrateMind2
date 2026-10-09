@@ -1,25 +1,8 @@
 import { useState } from "react";
 import { useInterval } from "../hooks.js";
-import { getStats, getRenderers, getPlaybackStatus } from "../api.js";
+import { getStats, getNowPlaying } from "../api.js";
 
 const POLL_MS = 3000;
-
-// ponytail: "active" is a heuristic (non-empty status with at least one
-// truthy/non-idle value) since VuIO's playback-status shape isn't fixed
-// across DLNA/Chromecast/AirPlay. Good enough for a home-network status bar;
-// revisit if a renderer's idle response starts showing up as "active".
-function isActive(status) {
-  if (!status || typeof status !== "object") return false;
-  const values = Object.values(status);
-  if (values.length === 0) return false;
-  return values.some((v) => v !== null && v !== false && v !== "" && v !== "stopped" && v !== "idle");
-}
-
-function extractTrackLabel(status) {
-  const candidate = status.title || status.track || status.now_playing || status.name;
-  if (typeof candidate === "string") return candidate;
-  return "Wiedergabe aktiv";
-}
 
 export default function StatusBar() {
   const [analyzing, setAnalyzing] = useState(false);
@@ -39,21 +22,8 @@ export default function StatusBar() {
   }, POLL_MS);
 
   useInterval(() => {
-    getRenderers()
-      .then(async ({ renderers }) => {
-        for (const renderer of renderers) {
-          try {
-            const status = await getPlaybackStatus(renderer.id);
-            if (isActive(status)) {
-              setActiveRenderer({ name: renderer.friendly_name, label: extractTrackLabel(status) });
-              return;
-            }
-          } catch {
-            // ignore unreachable renderer, try the next one
-          }
-        }
-        setActiveRenderer(null);
-      })
+    getNowPlaying()
+      .then(({ playing }) => setActiveRenderer(playing))
       .catch(() => {});
   }, POLL_MS);
 
@@ -62,7 +32,7 @@ export default function StatusBar() {
   return (
     <div className="status-bar">
       <span>
-        {activeRenderer ? `${activeRenderer.label} → ${activeRenderer.name}` : ""}
+        {activeRenderer ? `${activeRenderer.title || "Wiedergabe"} → ${activeRenderer.renderer}` : ""}
       </span>
       <span>
         {analyzing && <span className="status-accent">Analyse: {progress}%</span>}

@@ -37,5 +37,6 @@ export const castPlaylist = (playlistId, rendererId) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ renderer_id: rendererId }),
   });
+export const getNowPlaying = () => request("/now-playing");
 export const getPlaybackStatus = (rendererId) =>
   request(`/playback-status${rendererId ? `?renderer_id=${encodeURIComponent(rendererId)}` : ""}`);

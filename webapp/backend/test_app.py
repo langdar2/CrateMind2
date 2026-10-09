@@ -175,6 +175,43 @@ def test_tracks_search_endpoint():
     assert response.json()["tracks"][0]["path"] == "/music/a.mp3"
 
 
+IDLE_STATUS = {"renderers": [{"renderer_id": "r1", "friendly_name": "Evo One",
+                              "state": "unknown", "current_url": None}]}
+PLAYING_STATUS = {"renderers": [{"renderer_id": "r1", "friendly_name": "Evo One",
+                                 "state": "playing",
+                                 "current_url": "http://h:8080/media/42.m4a"}]}
+
+
+def test_now_playing_reports_nothing_when_idle():
+    """The old status bar read {renderers:[...]} as truthy and claimed
+    playback forever; an idle renderer must resolve to None."""
+    with patch.object(vuio_client, "get_playback_status", return_value=IDLE_STATUS):
+        with TestClient(app_module.app) as client:
+            response = client.get("/api/now-playing")
+    assert response.json() == {"playing": None}
+
+
+def test_now_playing_resolves_the_track():
+    with patch.object(vuio_client, "get_playback_status", return_value=PLAYING_STATUS), \
+         patch.object(vuio_client, "path_for_media_id", return_value="/music/A - Alb/01. A - Song.flac"):
+        with TestClient(app_module.app) as client:
+            response = client.get("/api/now-playing")
+    assert response.json()["playing"] == {
+        "renderer": "Evo One",
+        "path": "/music/A - Alb/01. A - Song.flac",
+        "title": "01. A - Song",
+    }
+
+
+def test_now_playing_survives_vuio_being_down():
+    with patch.object(vuio_client, "get_playback_status",
+                      side_effect=vuio_client.VuioError("down")):
+        with TestClient(app_module.app) as client:
+            response = client.get("/api/now-playing")
+    assert response.status_code == 200
+    assert response.json() == {"playing": None}
+
+
 def test_plays_endpoint_reports_recorded_listens():
     app_module.db.record_play(app_module.app.state.conn, "/music/a.mp3",
                               seconds=200, completed=True)
@@ -358,6 +395,9 @@ def test_retry_failed_endpoint_resets_failed_tracks():
 if __name__ == "__main__":
     test_stats_endpoint_returns_counts()
     test_tracks_search_endpoint()
+    test_now_playing_reports_nothing_when_idle()
+    test_now_playing_resolves_the_track()
+    test_now_playing_survives_vuio_being_down()
     test_plays_endpoint_reports_recorded_listens()
     test_recent_tracks_endpoint()
     test_failed_tracks_endpoint()
