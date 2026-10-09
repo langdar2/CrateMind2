@@ -23,6 +23,14 @@ import argparse
 import csv
 import json
 import math
+import sys
+from pathlib import Path
+
+# The webapp image ships only webapp/backend, so the scoring formula lives
+# there and is imported here -- one definition, no drift between the Apple
+# import and the plays the player counts.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "webapp" / "backend"))
+from db import score_of  # noqa: E402
 import sqlite3
 import sys
 from datetime import date
@@ -85,20 +93,6 @@ def load_history(csv_path: str, half_life_years: float) -> tuple:
         wp, ws, rp, rs = history.get(key, (0.0, 0.0, 0, 0))
         history[key] = (wp + plays * weight, ws + skips * weight, rp + plays, rs + skips)
     return history, _decay(earliest, ref, half_life_years)
-
-
-def score_of(plays: float, skips: float) -> float:
-    """Taste score from play and skip counts, each already aged-weighted.
-
-    log() damps the long tail - 200 plays is not 50x the preference of 4 plays,
-    and without it a handful of heavy-rotation artists swamp everything. The
-    second factor is a skip *ratio*, not a skip count: favourites get skipped a
-    lot simply because they come up a lot, so penalising absolute skips would
-    punish exactly the tracks we want to surface.
-    """
-    if plays <= 0:
-        return 0.0
-    return math.log(1 + plays) * (1 - skips / (plays + skips))
 
 
 def weigh(tracks: list, history: dict, old_weight: float) -> tuple:

@@ -243,7 +243,74 @@ def test_ratings_survive_a_preferences_reimport():
     assert db.load_ratings(conn) == {"/music/a.mp3": 1}
 
 
+def test_counted_plays_rank_like_apple_plays():
+    """A play in the player must count exactly as one in Apple Music: both
+    feed the same score, so neither source outranks the other."""
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    conn.execute(
+        "INSERT INTO preferences (path, song_key, plays, skips, score) "
+        "VALUES ('/music/a.mp3', 'a', 4, 0, ?)", (db.score_of(4, 0),)
+    )
+    conn.commit()
+
+    for _ in range(4):
+        db.count_play(conn, "/music/b.mp3")
+    by_path = {t["path"]: t for t in db.load_ok_tracks(conn)}
+    assert by_path["/music/b.mp3"]["score"] == by_path["/music/a.mp3"]["score"]
+
+    # a fifth play puts it ahead, and the percentile follows the score
+    db.count_play(conn, "/music/b.mp3")
+    by_path = {t["path"]: t for t in db.load_ok_tracks(conn)}
+    assert by_path["/music/b.mp3"]["score"] > by_path["/music/a.mp3"]["score"]
+    assert by_path["/music/b.mp3"]["percentile"] > by_path["/music/a.mp3"]["percentile"]
+
+
+def test_counted_plays_add_to_apple_plays_for_the_same_track():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    conn.execute(
+        "INSERT INTO preferences (path, song_key, plays, skips, score) "
+        "VALUES ('/music/a.mp3', 'a', 3, 1, ?)", (db.score_of(3, 1),)
+    )
+    conn.commit()
+
+    db.count_play(conn, "/music/a.mp3")
+    db.count_play(conn, "/music/a.mp3", skipped=True)
+    a = next(t for t in db.load_ok_tracks(conn) if t["path"] == "/music/a.mp3")
+    assert a["score"] == db.score_of(4, 2)
+
+
+def test_skips_lower_the_score_and_plays_survive_a_reimport():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    for _ in range(3):
+        db.count_play(conn, "/music/a.mp3")
+    db.count_play(conn, "/music/b.mp3")
+    db.count_play(conn, "/music/b.mp3")
+    db.count_play(conn, "/music/b.mp3")
+    db.count_play(conn, "/music/b.mp3", skipped=True)
+
+    by_path = {t["path"]: t for t in db.load_ok_tracks(conn)}
+    assert by_path["/music/b.mp3"]["score"] < by_path["/music/a.mp3"]["score"]
+
+    conn.execute("DELETE FROM preferences")  # what the Apple import does first
+    conn.commit()
+    assert db.load_plays(conn)["/music/a.mp3"] == (3, 0)
+
+
+def test_unplayed_tracks_keep_a_null_score():
+    """Never ranked below disliked music - that is what null is for."""
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    assert all(t["score"] is None for t in db.load_ok_tracks(conn))
+
+
 if __name__ == "__main__":
+    test_counted_plays_rank_like_apple_plays()
+    test_counted_plays_add_to_apple_plays_for_the_same_track()
+    test_skips_lower_the_score_and_plays_survive_a_reimport()
+    test_unplayed_tracks_keep_a_null_score()
     test_rating_overrides_taste_percentile_and_survives_clearing()
     test_ratings_survive_a_preferences_reimport()
     test_fetch_stats_counts_status_and_aggregates()

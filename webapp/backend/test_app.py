@@ -74,6 +74,30 @@ def test_banned_tracks_are_kept_out_of_playlists_but_stay_seedable():
             client.put("/api/ratings", json={"path": "/music/a.mp3", "rating": 0})
 
 
+def test_play_endpoint_counts_and_refreshes_the_cache():
+    with TestClient(app_module.app) as client:
+        before = next(t for t in app_module.app.state.tracks
+                      if t["path"] == "/music/a.mp3")["score"]
+        r = client.post("/api/plays", json={"path": "/music/a.mp3"})
+        assert r.status_code == 200
+        assert r.json()["plays"] == 1
+
+        # the cached list backs every playlist, so the play must show there now
+        after = next(t for t in app_module.app.state.tracks
+                     if t["path"] == "/music/a.mp3")["score"]
+        assert before is None and after == db.score_of(1, 0)
+
+        assert client.post("/api/plays",
+                           json={"path": "/music/a.mp3", "skipped": True}
+                           ).json() == {"path": "/music/a.mp3", "plays": 1, "skips": 1}
+
+
+def test_playing_an_unknown_track_is_404():
+    with TestClient(app_module.app) as client:
+        assert client.post("/api/plays",
+                           json={"path": "/music/nope.mp3"}).status_code == 404
+
+
 def test_stats_endpoint_returns_counts():
     with TestClient(app_module.app) as client:
         response = client.get("/api/stats")

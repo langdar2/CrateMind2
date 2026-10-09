@@ -48,6 +48,11 @@ class PreviewRequest(BaseModel):
     limit: int = 30
 
 
+class PlayRequest(BaseModel):
+    path: str
+    skipped: bool = False
+
+
 class RatingRequest(BaseModel):
     path: str
     rating: int  # +1 favourite, -1 thumbs-down, 0 clears
@@ -75,6 +80,18 @@ def search_tracks(q: str = "", limit: int = 20):
     return {"tracks": db.search_ok_tracks(app.state.conn, q, limit)}
 
 
+@app.post("/api/plays")
+def post_play(req: PlayRequest):
+    if not any(t["path"] == req.path for t in app.state.tracks):
+        raise HTTPException(status_code=404, detail=f"Track nicht gefunden: {req.path}")
+    result = db.count_play(app.state.conn, req.path, req.skipped)
+    # One play shifts this track's score and therefore every percentile, so
+    # reload rather than patch. ponytail: a full reload per play is fine at
+    # one listener and ~33k tracks (tens of ms); batch it if that changes.
+    app.state.tracks = db.load_ok_tracks(app.state.conn)
+    return result
+
+
 @app.get("/api/ratings")
 def get_ratings():
     return {"ratings": [{"path": p, "rating": r}
@@ -91,7 +108,7 @@ def put_rating(req: RatingRequest):
     for t in app.state.tracks:
         if t["path"] == req.path:
             t["rating"] = req.rating
-            t["percentile"] = db.rated_percentile(t["apple_percentile"], req.rating)
+            t["percentile"] = db.rated_percentile(t["played_percentile"], req.rating)
             break
     return {"path": req.path, "rating": req.rating}
 
