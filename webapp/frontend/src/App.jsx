@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
 import Dashboard from "./pages/Dashboard.jsx";
 import Playlists from "./pages/Playlists.jsx";
 import Renderers from "./pages/Renderers.jsx";
+import Graph from "./pages/Graph.jsx";
 import StatusBar from "./components/StatusBar.jsx";
 
 const DashboardIcon = () => (
@@ -29,6 +30,17 @@ const RendererIcon = () => (
   </svg>
 );
 
+const GraphIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="5" r="2.5" />
+    <circle cx="5" cy="18" r="2.5" />
+    <circle cx="19" cy="18" r="2.5" />
+    <line x1="12" y1="7.5" x2="5.8" y2="15.7" />
+    <line x1="12" y1="7.5" x2="18.2" y2="15.7" />
+    <line x1="7.5" y1="18" x2="16.5" y2="18" />
+  </svg>
+);
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -41,6 +53,9 @@ export default function App() {
           <NavLink to="/playlists" title="Playlists">
             <PlaylistIcon />
           </NavLink>
+          <NavLink to="/graph" title="Klang-Graph">
+            <GraphIcon />
+          </NavLink>
           <NavLink to="/renderers" title="Renderer">
             <RendererIcon />
           </NavLink>
@@ -50,6 +65,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/playlists" element={<Playlists />} />
+              <Route path="/graph" element={<Graph />} />
               <Route path="/renderers" element={<Renderers />} />
             </Routes>
           </main>

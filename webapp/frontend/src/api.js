@@ -11,6 +11,9 @@ async function request(path, options) {
 
 export const getStats = () => request("/stats");
 export const getRecentTracks = (limit = 10) => request(`/tracks/recent?limit=${limit}`);
+export const getGraphArtists = () => request("/graph/artists");
+export const getArtistGraph = (artist, limit = 20) =>
+  request(`/graph/${encodeURIComponent(artist)}?limit=${limit}`);
 export const searchTracks = (q) => request(`/tracks?q=${encodeURIComponent(q)}&limit=10`);
 export const getFailedTracks = (q, limit, offset) =>
   request(`/tracks/failed?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`);

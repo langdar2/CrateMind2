@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import db
+import graph
 import omlx_client
 import presets
 import similarity
@@ -27,6 +28,10 @@ async def lifespan(app: FastAPI):
     conn = db.get_connection(DB_PATH)
     app.state.conn = conn
     app.state.tracks = db.load_ok_tracks(conn)
+    # Centroids over 33k embeddings take a moment, so build them once here
+    # rather than per request. Picks up new tracks whenever the container
+    # restarts; the analysis service writes the DB but cannot reload us.
+    app.state.graph = graph.build_index(app.state.tracks)
     yield
 
 
@@ -118,6 +123,19 @@ def put_rating(req: RatingRequest):
             t["percentile"] = db.rated_percentile(t["played_percentile"], req.rating)
             break
     return {"path": req.path, "rating": req.rating}
+
+
+@app.get("/api/graph/artists")
+def list_graph_artists():
+    return {"artists": graph.list_artists(app.state.graph)}
+
+
+@app.get("/api/graph/{artist}")
+def get_artist_graph(artist: str, limit: int = 20):
+    result = graph.neighbourhood(app.state.graph, artist.lower(), limit)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Künstler nicht gefunden: {artist}")
+    return result
 
 
 @app.get("/api/tracks/recent")

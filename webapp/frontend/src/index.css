@@ -429,6 +429,30 @@ input[type="range"]:disabled {
   color: var(--lcars-ice);
 }
 
+.graph-canvas {
+  width: 100%;
+  height: auto;
+  background: var(--lcars-black);
+  border-radius: 20px;
+  display: block;
+}
+
+.graph-label {
+  fill: var(--lcars-peach);
+  font-family: "Antonio", "Arial Narrow", sans-serif;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+}
+
+.graph-legend {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
 .chip-score {
   border-color: var(--lcars-gold);
   color: var(--lcars-gold);
