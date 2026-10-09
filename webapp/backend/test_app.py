@@ -125,6 +125,43 @@ def test_fresh_quota_reaches_playlists_through_the_api():
             app_module.app.state.tracks = db.load_ok_tracks(app_module.app.state.conn)
 
 
+def test_preview_reports_import_date_and_new_flag():
+    """Clients badge new music off this, so the flag must follow the window
+    the request itself asked for, not a fixed one."""
+    import time as _t
+    with TestClient(app_module.app) as client:
+        fresh = dict(app_module.app.state.tracks[0])
+        fresh["first_seen"] = _t.time() - 10 * 86400
+        app_module.app.state.tracks = [fresh]
+        try:
+            body = {"mode": "manual", "criteria": {}, "limit": 1, "fresh_share": 0}
+            t = client.post("/api/playlists/preview",
+                            json={**body, "fresh_days": 60}).json()["tracks"][0]
+            assert t["first_seen"] == fresh["first_seen"]
+            assert t["is_new"] is True
+
+            # same track, narrower window -> no longer new
+            t = client.post("/api/playlists/preview",
+                            json={**body, "fresh_days": 5}).json()["tracks"][0]
+            assert t["is_new"] is False
+        finally:
+            app_module.app.state.tracks = db.load_ok_tracks(app_module.app.state.conn)
+
+
+def test_preview_handles_tracks_with_no_import_date():
+    with TestClient(app_module.app) as client:
+        undated = dict(app_module.app.state.tracks[0])
+        undated["first_seen"] = None
+        app_module.app.state.tracks = [undated]
+        try:
+            t = client.post("/api/playlists/preview",
+                            json={"mode": "manual", "criteria": {}, "limit": 1}
+                            ).json()["tracks"][0]
+            assert t["first_seen"] is None and t["is_new"] is False
+        finally:
+            app_module.app.state.tracks = db.load_ok_tracks(app_module.app.state.conn)
+
+
 def test_stats_endpoint_returns_counts():
     with TestClient(app_module.app) as client:
         response = client.get("/api/stats")

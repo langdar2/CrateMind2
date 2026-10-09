@@ -327,6 +327,7 @@ export default function Playlists() {
                     {t.percentile != null && (
                       <span className="chip chip-score">Top {Math.max(1, 100 - t.percentile)}%</span>
                     )}
+                    {t.is_new && <span className="chip chip-new">Neu</span>}
                   </span>
                 </span>
                 <span style={{ display: "flex", gap: "4px" }}>

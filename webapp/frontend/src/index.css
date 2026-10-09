@@ -433,3 +433,8 @@ input[type="range"]:disabled {
   border-color: var(--lcars-gold);
   color: var(--lcars-gold);
 }
+
+.chip-new {
+  border-color: var(--lcars-lilac);
+  color: var(--lcars-lilac);
+}

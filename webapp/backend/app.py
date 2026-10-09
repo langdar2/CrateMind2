@@ -208,12 +208,18 @@ def select_tracks(req: PreviewRequest) -> list:
 
 @app.post("/api/playlists/preview")
 def preview_playlist(req: PreviewRequest):
+    now = time.time()
     return {"tracks": [
         {
             "path": t["path"], "bpm": t["bpm"], "key": t["key"],
             "danceability": t["danceability"], "mood_happy": t["mood_happy"],
             "mood_aggressive": t["mood_aggressive"], "mood_relaxed": t["mood_relaxed"],
             "mood_party": t["mood_party"], "percentile": t.get("percentile"),
+            # When the library first saw the file, plus the verdict against
+            # this request's own window, so a client can badge a track as new
+            # without repeating the fresh_days arithmetic.
+            "first_seen": t.get("first_seen"),
+            "is_new": presets.is_fresh(t, now, req.fresh_days),
         }
         for t in select_tracks(req)
     ]}
