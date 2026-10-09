@@ -48,6 +48,11 @@ class PreviewRequest(BaseModel):
     limit: int = 30
 
 
+class RatingRequest(BaseModel):
+    path: str
+    rating: int  # +1 favourite, -1 thumbs-down, 0 clears
+
+
 class CreatePlaylistRequest(BaseModel):
     name: str
     track_paths: list
@@ -68,6 +73,27 @@ def get_stats():
 @app.get("/api/tracks")
 def search_tracks(q: str = "", limit: int = 20):
     return {"tracks": db.search_ok_tracks(app.state.conn, q, limit)}
+
+
+@app.get("/api/ratings")
+def get_ratings():
+    return {"ratings": [{"path": p, "rating": r}
+                        for p, r in db.load_ratings(app.state.conn).items()]}
+
+
+@app.put("/api/ratings")
+def put_rating(req: RatingRequest):
+    if not any(t["path"] == req.path for t in app.state.tracks):
+        raise HTTPException(status_code=404, detail=f"Track nicht gefunden: {req.path}")
+    db.set_rating(app.state.conn, req.path, req.rating)
+    # The track list is loaded once at startup and carries the percentile the
+    # rating changes, so patch it in place rather than make the user restart.
+    for t in app.state.tracks:
+        if t["path"] == req.path:
+            t["rating"] = req.rating
+            t["percentile"] = db.rated_percentile(t["apple_percentile"], req.rating)
+            break
+    return {"path": req.path, "rating": req.rating}
 
 
 @app.get("/api/tracks/recent")
@@ -92,6 +118,10 @@ def select_tracks(req: PreviewRequest) -> list:
     tracks = app.state.tracks
     if not tracks:
         raise HTTPException(status_code=404, detail="Keine analysierten Tracks vorhanden")
+    # A thumbs-down means "never play this", which a low taste score alone
+    # would not guarantee - taste_weight 0 ignores the score entirely. Keep it
+    # seedable, so rating a track still lets you ask for more like it.
+    tracks = [t for t in tracks if t.get("rating", 0) >= 0 or t["path"] == req.seed_path]
 
     if req.mode == "manual":
         matches = presets.filter_by_criteria(tracks, req.criteria or {}, limit=req.limit,

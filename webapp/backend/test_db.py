@@ -205,7 +205,47 @@ def test_retry_failed_tracks_resets_status_and_clears_error():
     assert row == ("pending", None)
 
 
+def test_rating_overrides_taste_percentile_and_survives_clearing():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    conn.execute(
+        "INSERT INTO preferences (path, song_key, plays, skips, score) "
+        "VALUES ('/music/a.mp3', 'a', 10, 0, 2.4)"
+    )
+    conn.commit()
+    apple = next(t for t in db.load_ok_tracks(conn)
+                 if t["path"] == "/music/a.mp3")["percentile"]
+
+    db.set_rating(conn, "/music/b.mp3", 1)
+    db.set_rating(conn, "/music/a.mp3", -1)
+    by_path = {t["path"]: t for t in db.load_ok_tracks(conn)}
+    assert by_path["/music/b.mp3"]["percentile"] == db.FAVOURITE_PERCENTILE
+    assert by_path["/music/a.mp3"]["percentile"] == db.BANNED_PERCENTILE
+
+    # clearing restores what Apple said, rather than leaving the override
+    db.set_rating(conn, "/music/a.mp3", 0)
+    cleared = next(t for t in db.load_ok_tracks(conn) if t["path"] == "/music/a.mp3")
+    assert cleared["percentile"] == apple
+    assert cleared["rating"] == 0
+    assert db.load_ratings(conn) == {"/music/b.mp3": 1}
+
+
+def test_ratings_survive_a_preferences_reimport():
+    """import_preferences wipes `preferences` wholesale; hand ratings must not
+    be collateral damage."""
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    db.set_rating(conn, "/music/a.mp3", 1)
+
+    conn.execute("DELETE FROM preferences")  # what the Apple import does first
+    conn.commit()
+
+    assert db.load_ratings(conn) == {"/music/a.mp3": 1}
+
+
 if __name__ == "__main__":
+    test_rating_overrides_taste_percentile_and_survives_clearing()
+    test_ratings_survive_a_preferences_reimport()
     test_fetch_stats_counts_status_and_aggregates()
     test_load_ok_tracks_returns_only_ok_with_embedding()
     test_load_ok_tracks_joins_preferences_and_leaves_unscored_null()

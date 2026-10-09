@@ -40,6 +40,20 @@ def get_connection(db_path: str) -> sqlite3.Connection:
         )
         """
     )
+    # Ratings the user gave by hand, in the player or here. Deliberately NOT
+    # in `preferences`: that table is rebuilt wholesale by import_preferences
+    # (DELETE then INSERT), which would throw hand-made ratings away on the
+    # next Apple import. Keyed by path like everything else; rating is +1 for
+    # a favourite and -1 for a thumbs-down.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ratings (
+            path TEXT PRIMARY KEY,
+            rating INTEGER NOT NULL,
+            updated_at REAL NOT NULL
+        )
+        """
+    )
     # Playlist recipes are webapp state rather than analysis output, but a
     # second database file for one small table is not worth the moving parts.
     conn.execute(
@@ -107,6 +121,44 @@ def fetch_stats(conn: sqlite3.Connection) -> dict:
     }
 
 
+# What a hand-rated track counts as on the 0-100 taste scale. A favourite
+# rates like the best-liked music in the library rather than above it, so one
+# click does not outrank a lifetime of plays; a thumbs-down goes to the floor.
+FAVOURITE_PERCENTILE = 95.0
+BANNED_PERCENTILE = 0.0
+
+
+def rated_percentile(apple_percentile, rating: int):
+    """Taste percentile once a hand rating is taken into account.
+
+    A hand rating speaks for the whole song, so it also stands in for an Apple
+    score the import never produced. Clearing it restores what Apple said.
+    """
+    if rating > 0:
+        return FAVOURITE_PERCENTILE
+    if rating < 0:
+        return BANNED_PERCENTILE
+    return apple_percentile
+
+
+def set_rating(conn: sqlite3.Connection, path: str, rating: int) -> None:
+    """Record +1 (favourite) or -1 (thumbs-down); 0 clears the rating."""
+    if rating == 0:
+        conn.execute("DELETE FROM ratings WHERE path = ?", (path,))
+    else:
+        conn.execute(
+            "INSERT INTO ratings (path, rating, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(path) DO UPDATE SET rating = excluded.rating, "
+            "updated_at = excluded.updated_at",
+            (path, 1 if rating > 0 else -1, time.time()),
+        )
+    conn.commit()
+
+
+def load_ratings(conn: sqlite3.Connection) -> dict:
+    return dict(conn.execute("SELECT path, rating FROM ratings").fetchall())
+
+
 def load_ok_tracks(conn: sqlite3.Connection) -> list:
     rows = conn.execute(
         """
@@ -123,8 +175,11 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
         """
     ).fetchall()
 
+    ratings = load_ratings(conn)
+
     tracks = []
     for path, bpm, key, happy, aggressive, relaxed, party, dance, emb_blob, score, song_key, percentile in rows:
+        rating = ratings.get(path, 0)
         tracks.append({
             "path": path,
             "bpm": bpm,
@@ -139,7 +194,10 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
             # score is the precise internal value used for ordering; percentile
             # is its rank among scored tracks, which is what users can read.
             "score": score,
-            "percentile": percentile,
+            "percentile": rated_percentile(percentile, rating),
+            # kept so clearing a rating can restore what Apple said
+            "apple_percentile": percentile,
+            "rating": rating,
             "song_key": song_key,
             "artist": artist_of(path),
             "embedding": np.frombuffer(emb_blob, dtype=np.float32),

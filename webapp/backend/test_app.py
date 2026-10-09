@@ -31,9 +31,47 @@ def _make_test_db():
 os.environ["DB_PATH"] = _make_test_db()
 
 import app as app_module
+import db
 import omlx_client
 import typesafe_client
 import vuio_client
+
+
+def test_rating_endpoint_persists_and_takes_effect_without_restart():
+    with TestClient(app_module.app) as client:
+        r = client.put("/api/ratings", json={"path": "/music/a.mp3", "rating": 1})
+        assert r.status_code == 200
+
+        assert client.get("/api/ratings").json()["ratings"] == [
+            {"path": "/music/a.mp3", "rating": 1}]
+        # the cached track list backs every playlist, so it must reflect it now
+        cached = next(t for t in app_module.app.state.tracks
+                      if t["path"] == "/music/a.mp3")
+        assert cached["percentile"] == db.FAVOURITE_PERCENTILE
+
+        client.put("/api/ratings", json={"path": "/music/a.mp3", "rating": 0})
+        assert client.get("/api/ratings").json()["ratings"] == []
+
+
+def test_rating_an_unknown_track_is_404():
+    with TestClient(app_module.app) as client:
+        r = client.put("/api/ratings", json={"path": "/music/nope.mp3", "rating": 1})
+        assert r.status_code == 404
+
+
+def test_banned_tracks_are_kept_out_of_playlists_but_stay_seedable():
+    with TestClient(app_module.app) as client:
+        client.put("/api/ratings", json={"path": "/music/a.mp3", "rating": -1})
+        try:
+            body = {"mode": "seed", "seed_path": "/music/a.mp3", "limit": 5}
+            # seeding off a banned track still resolves it (no 404)
+            assert client.post("/api/playlists/preview", json=body).status_code == 200
+            # but it is gone as a candidate for everyone else
+            assert all(t["path"] != "/music/a.mp3" for t in
+                       app_module.select_tracks(app_module.PreviewRequest(
+                           mode="manual", criteria={}, limit=5)))
+        finally:
+            client.put("/api/ratings", json={"path": "/music/a.mp3", "rating": 0})
 
 
 def test_stats_endpoint_returns_counts():
