@@ -136,6 +136,40 @@ def test_find_file_id_raises_vuio_error_on_malformed_response():
             pass
 
 
+def test_all_playback_status_asks_every_renderer():
+    """Bulk get_playback_status only reports casts this server started, so
+    anything begun from another app is invisible without the fan-out."""
+    def fake(name, arguments, timeout=10.0):
+        if name == "list_renderers":
+            return {"renderers": [{"id": "r1"}, {"id": "r2"}]}
+        if arguments["renderer_id"] == "r2":
+            return {"renderers": [{"renderer_id": "r2", "state": "playing",
+                                   "current_url": "http://h/media/9.m4a"}]}
+        return {"renderers": [{"renderer_id": "r1", "state": "unknown", "current_url": None}]}
+
+    with patch("vuio_client._call_tool", side_effect=fake):
+        status = vuio_client.all_playback_status()
+
+    assert len(status["renderers"]) == 2
+    assert any(r["state"] == "playing" for r in status["renderers"])
+
+
+def test_all_playback_status_skips_renderers_that_fail():
+    """An unreachable renderer must not take the whole poll down."""
+    def fake(name, arguments, timeout=10.0):
+        if name == "list_renderers":
+            return {"renderers": [{"id": "dead"}, {"id": "alive"}]}
+        if arguments["renderer_id"] == "dead":
+            raise vuio_client.VuioError("timeout")
+        return {"renderers": [{"renderer_id": "alive", "state": "playing",
+                               "current_url": "http://h/media/3.m4a"}]}
+
+    with patch("vuio_client._call_tool", side_effect=fake):
+        status = vuio_client.all_playback_status()
+
+    assert [r["renderer_id"] for r in status["renderers"]] == ["alive"]
+
+
 def test_replace_playlist_tracks_removes_old_then_adds_new():
     calls = []
 
@@ -197,6 +231,8 @@ if __name__ == "__main__":
     test_call_tool_raises_vuio_error_on_non_json_response()
     test_list_renderers_raises_vuio_error_on_malformed_response()
     test_find_file_id_raises_vuio_error_on_malformed_response()
+    test_all_playback_status_asks_every_renderer()
+    test_all_playback_status_skips_renderers_that_fail()
     test_replace_playlist_tracks_removes_old_then_adds_new()
     test_replace_playlist_tracks_keeps_old_contents_if_a_track_is_missing()
     test_create_playlist_raises_vuio_error_on_malformed_response()

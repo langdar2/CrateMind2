@@ -185,14 +185,14 @@ PLAYING_STATUS = {"renderers": [{"renderer_id": "r1", "friendly_name": "Evo One"
 def test_now_playing_reports_nothing_when_idle():
     """The old status bar read {renderers:[...]} as truthy and claimed
     playback forever; an idle renderer must resolve to None."""
-    with patch.object(vuio_client, "get_playback_status", return_value=IDLE_STATUS):
+    with patch.object(vuio_client, "all_playback_status", return_value=IDLE_STATUS):
         with TestClient(app_module.app) as client:
             response = client.get("/api/now-playing")
     assert response.json() == {"playing": None}
 
 
 def test_now_playing_resolves_the_track():
-    with patch.object(vuio_client, "get_playback_status", return_value=PLAYING_STATUS), \
+    with patch.object(vuio_client, "all_playback_status", return_value=PLAYING_STATUS), \
          patch.object(vuio_client, "path_for_media_id", return_value="/music/A - Alb/01. A - Song.flac"):
         with TestClient(app_module.app) as client:
             response = client.get("/api/now-playing")
@@ -204,7 +204,7 @@ def test_now_playing_resolves_the_track():
 
 
 def test_now_playing_survives_vuio_being_down():
-    with patch.object(vuio_client, "get_playback_status",
+    with patch.object(vuio_client, "all_playback_status",
                       side_effect=vuio_client.VuioError("down")):
         with TestClient(app_module.app) as client:
             response = client.get("/api/now-playing")

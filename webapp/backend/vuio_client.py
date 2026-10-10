@@ -1,11 +1,15 @@
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
 VUIO_BASE_URL = os.environ.get("VUIO_BASE_URL", "http://localhost:8080")
 VUIO_TOKEN = os.environ.get("VUIO_TOKEN")
 PROTOCOL_VERSION = "2026-07-28"
+# Per-renderer playback probe. Live renderers reply in milliseconds, so this
+# only ever cuts short the ones that will never answer.
+PLAYBACK_PROBE_TIMEOUT = 2.0
 
 # Paths are stored in our DB using the analysis container's mount (MUSIC_DIR,
 # e.g. /music), but VUIO indexes the same files under their real host path.
@@ -25,7 +29,7 @@ class VuioError(Exception):
     pass
 
 
-def _call_tool(name: str, arguments: dict) -> dict:
+def _call_tool(name: str, arguments: dict, timeout: float = 10.0) -> dict:
     url = f"{VUIO_BASE_URL}/mcp"
     body = {
         "jsonrpc": "2.0",
@@ -47,7 +51,7 @@ def _call_tool(name: str, arguments: dict) -> dict:
         headers["Authorization"] = f"Bearer {VUIO_TOKEN}"
 
     try:
-        response = httpx.post(url, json=body, headers=headers, timeout=10.0)
+        response = httpx.post(url, json=body, headers=headers, timeout=timeout)
         response.raise_for_status()
         payload = response.json()
     except httpx.HTTPError as e:
@@ -154,3 +158,33 @@ def cast_playlist(playlist_id: int, renderer_id: str) -> dict:
 def get_playback_status(renderer_id: str = None) -> dict:
     arguments = {"renderer_id": renderer_id} if renderer_id else {}
     return _call_tool("get_playback_status", arguments)
+
+
+def all_playback_status() -> dict:
+    """Playback state of every renderer, asked one at a time.
+
+    get_playback_status() with no id only reports casts this server started
+    (`last_sent_by_this_server`), so anything begun from another app shows up
+    as an empty list - the fan-out is the only way to see it. Probing the
+    renderers serially takes ~10s because unreachable ones sit out their
+    timeout, hence the threads.
+    """
+    try:
+        renderers = list_renderers()
+    except VuioError:
+        return {"renderers": []}
+
+    def probe(renderer):
+        try:
+            # A renderer that is up answers in well under 100ms; one that is
+            # merely advertised (a Chromecast that is off, say) never answers
+            # at all and would otherwise hold the whole poll for 10s.
+            status = _call_tool("get_playback_status", {"renderer_id": renderer["id"]},
+                                timeout=PLAYBACK_PROBE_TIMEOUT)
+            return status.get("renderers") or []
+        except VuioError:
+            return []
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        groups = pool.map(probe, renderers)
+    return {"renderers": [entry for group in groups for entry in group]}

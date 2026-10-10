@@ -39,7 +39,7 @@ async def watch_playback():
     while True:
         await asyncio.sleep(PLAYBACK_POLL_SECONDS)
         try:
-            status = await asyncio.to_thread(vuio_client.get_playback_status)
+            status = await asyncio.to_thread(vuio_client.all_playback_status)
             event = app.state.play_tracker.observe(
                 plays.current_media_id(status), time.monotonic()
             )
@@ -173,7 +173,7 @@ def now_playing():
     about; playback started from another app may not show up.
     """
     try:
-        status = vuio_client.get_playback_status()
+        status = vuio_client.all_playback_status()
     except vuio_client.VuioError:
         return {"playing": None}
 
