@@ -182,6 +182,69 @@ PLAYING_STATUS = {"renderers": [{"renderer_id": "r1", "friendly_name": "Evo One"
                                  "current_url": "http://h:8080/media/42.m4a"}]}
 
 
+def test_schedule_requires_a_recipe_to_refresh_from():
+    """Without a recipe there is nothing to rebuild from, so refuse early
+    rather than failing silently every week."""
+    with TestClient(app_module.app) as client:
+        response = client.put("/api/schedules/777",
+                              json={"name": "X", "weekday": 1, "hour": 6, "minute": 17})
+    assert response.status_code == 400
+
+
+def test_schedule_rejects_impossible_times():
+    app_module.db.save_recipe(app_module.app.state.conn, 55,
+                              {"mode": "manual", "criteria": {"min_bpm": 10}})
+    with TestClient(app_module.app) as client:
+        response = client.put("/api/schedules/55",
+                              json={"name": "X", "weekday": 9, "hour": 6, "minute": 17})
+    assert response.status_code == 400
+
+
+def test_schedule_round_trip_through_the_api():
+    app_module.db.save_recipe(app_module.app.state.conn, 56,
+                              {"mode": "manual", "criteria": {"min_bpm": 10}})
+    with TestClient(app_module.app) as client:
+        assert client.put("/api/schedules/56",
+                          json={"name": "Wochenmix", "weekday": 1,
+                                "hour": 6, "minute": 17}).status_code == 200
+        entry = next(s for s in client.get("/api/schedules").json()["schedules"]
+                     if s["playlist_id"] == 56)
+        assert entry["describes"] == "Montag 06:17"
+        assert entry["recipe"]["mode"] == "manual"
+        assert entry["next_run"].endswith("06:17")
+
+        assert client.delete("/api/schedules/56").status_code == 200
+        assert client.delete("/api/schedules/56").status_code == 404
+
+
+def test_a_new_schedule_waits_for_its_next_slot():
+    """Setting up "Monday 06:17" mid-week must not fire within the minute."""
+    app_module.db.save_recipe(app_module.app.state.conn, 58,
+                              {"mode": "manual", "criteria": {"min_bpm": 10}})
+    with TestClient(app_module.app) as client:
+        client.put("/api/schedules/58",
+                   json={"name": "X", "weekday": 1, "hour": 6, "minute": 17})
+    entry = next(s for s in app_module.db.list_schedules(app_module.app.state.conn)
+                 if s["playlist_id"] == 58)
+    assert entry["last_run"] is not None
+    assert app_module.schedules.is_due(entry, app_module.datetime.now()) is False
+
+
+def test_run_now_rebuilds_from_the_stored_recipe():
+    app_module.db.save_recipe(app_module.app.state.conn, 57,
+                              {"mode": "manual", "criteria": {"min_bpm": 10}})
+    app_module.db.save_schedule(app_module.app.state.conn, 57, "X", 1, 6, 17)
+    with patch.object(vuio_client, "replace_playlist_tracks", return_value=1) as mock:
+        with TestClient(app_module.app) as client:
+            response = client.post("/api/schedules/57/run")
+    assert response.json() == {"playlist_id": 57, "track_count": 1}
+    assert mock.call_args[0][1] == ["/music/a.mp3"]
+    # The run is recorded, so the weekly slot does not fire again on top of it.
+    entry = next(s for s in app_module.db.list_schedules(app_module.app.state.conn)
+                 if s["playlist_id"] == 57)
+    assert entry["last_result"] == "1 Tracks"
+
+
 def test_now_playing_reports_nothing_when_idle():
     """The old status bar read {renderers:[...]} as truthy and claimed
     playback forever; an idle renderer must resolve to None."""
@@ -395,6 +458,11 @@ def test_retry_failed_endpoint_resets_failed_tracks():
 if __name__ == "__main__":
     test_stats_endpoint_returns_counts()
     test_tracks_search_endpoint()
+    test_schedule_requires_a_recipe_to_refresh_from()
+    test_schedule_rejects_impossible_times()
+    test_schedule_round_trip_through_the_api()
+    test_a_new_schedule_waits_for_its_next_slot()
+    test_run_now_rebuilds_from_the_stored_recipe()
     test_now_playing_reports_nothing_when_idle()
     test_now_playing_resolves_the_track()
     test_now_playing_survives_vuio_being_down()

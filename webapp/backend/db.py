@@ -106,6 +106,20 @@ def get_connection(db_path: str) -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS playlist_schedules (
+            playlist_id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            weekday INTEGER NOT NULL,
+            hour INTEGER NOT NULL,
+            minute INTEGER NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            last_run REAL,
+            last_result TEXT
+        )
+        """
+    )
     # Playlist recipes are webapp state rather than analysis output, but a
     # second database file for one small table is not worth the moving parts.
     conn.execute(
@@ -155,6 +169,61 @@ def fetch_local_plays(conn: sqlite3.Connection, limit: int = 50) -> list:
         {"path": p, "plays": pl, "skips": sk, "seconds": round(s), "last_played": lp}
         for p, pl, sk, s, lp in rows
     ]
+
+
+def save_schedule(conn: sqlite3.Connection, playlist_id: int, name: str,
+                  weekday: int, hour: int, minute: int, enabled: bool = True,
+                  starts_run_at: float = None) -> None:
+    """Create or update the weekly slot for a playlist.
+
+    A new schedule starts out marked as having run at its previous slot
+    (`starts_run_at`), so setting up "Monday 06:17" on a Saturday waits for
+    Monday instead of firing within the minute. last_run is preserved on
+    update for the same reason: changing the time must not trigger a run.
+    """
+    conn.execute(
+        """
+        INSERT INTO playlist_schedules
+            (playlist_id, name, weekday, hour, minute, enabled, last_run)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(playlist_id) DO UPDATE SET
+            name = excluded.name, weekday = excluded.weekday,
+            hour = excluded.hour, minute = excluded.minute, enabled = excluded.enabled
+        """,
+        (playlist_id, name, weekday, hour, minute, 1 if enabled else 0, starts_run_at),
+    )
+    conn.commit()
+
+
+def _schedule_row(row) -> dict:
+    playlist_id, name, weekday, hour, minute, enabled, last_run, last_result = row
+    return {"playlist_id": playlist_id, "name": name, "weekday": weekday,
+            "hour": hour, "minute": minute, "enabled": bool(enabled),
+            "last_run": last_run, "last_result": last_result}
+
+
+def list_schedules(conn: sqlite3.Connection) -> list:
+    rows = conn.execute(
+        """
+        SELECT playlist_id, name, weekday, hour, minute, enabled, last_run, last_result
+        FROM playlist_schedules ORDER BY weekday, hour, minute
+        """
+    ).fetchall()
+    return [_schedule_row(r) for r in rows]
+
+
+def delete_schedule(conn: sqlite3.Connection, playlist_id: int) -> int:
+    cur = conn.execute("DELETE FROM playlist_schedules WHERE playlist_id = ?", (playlist_id,))
+    conn.commit()
+    return cur.rowcount
+
+
+def mark_schedule_run(conn: sqlite3.Connection, playlist_id: int, result: str) -> None:
+    conn.execute(
+        "UPDATE playlist_schedules SET last_run = ?, last_result = ? WHERE playlist_id = ?",
+        (time.time(), result, playlist_id),
+    )
+    conn.commit()
 
 
 def save_recipe(conn: sqlite3.Connection, playlist_id: int, recipe: dict) -> None:

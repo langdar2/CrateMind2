@@ -138,6 +138,50 @@ def test_fetch_local_plays_is_most_recent_first():
     assert [p["path"] for p in db.fetch_local_plays(conn)] == ["/music/b.mp3", "/music/a.mp3"]
 
 
+def test_schedule_round_trips_and_updates_in_place():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+
+    db.save_schedule(conn, 3, "Wochenmix", weekday=1, hour=6, minute=17)
+    db.save_schedule(conn, 4, "Energiegeladen", weekday=4, hour=17, minute=43)
+    rows = db.list_schedules(conn)
+
+    assert [r["name"] for r in rows] == ["Wochenmix", "Energiegeladen"]
+    assert rows[0]["enabled"] is True
+    assert rows[0]["last_run"] is None
+
+    db.save_schedule(conn, 3, "Wochenmix", weekday=2, hour=8, minute=0, enabled=False)
+    again = db.list_schedules(conn)
+    assert len(again) == 2
+    updated = next(r for r in again if r["playlist_id"] == 3)
+    assert (updated["weekday"], updated["hour"], updated["enabled"]) == (2, 8, False)
+
+
+def test_editing_a_schedule_keeps_its_last_run():
+    """Otherwise changing the time would make it fire again straight away."""
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    db.save_schedule(conn, 3, "Wochenmix", weekday=1, hour=6, minute=17)
+    db.mark_schedule_run(conn, 3, "40 Tracks")
+    before = db.list_schedules(conn)[0]["last_run"]
+
+    db.save_schedule(conn, 3, "Wochenmix", weekday=3, hour=9, minute=30)
+
+    after = db.list_schedules(conn)[0]
+    assert after["last_run"] == before
+    assert after["last_result"] == "40 Tracks"
+
+
+def test_delete_schedule_reports_what_it_removed():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    db.save_schedule(conn, 3, "Wochenmix", weekday=1, hour=6, minute=17)
+
+    assert db.delete_schedule(conn, 3) == 1
+    assert db.delete_schedule(conn, 3) == 0
+    assert db.list_schedules(conn) == []
+
+
 def test_recipe_round_trips_and_overwrites():
     path = _make_test_db()
     conn = db.get_connection(path)
@@ -377,6 +421,9 @@ if __name__ == "__main__":
     test_load_ok_tracks_returns_only_ok_with_embedding()
     test_load_ok_tracks_joins_preferences_and_leaves_unscored_null()
     test_percentile_ranks_scores_among_scored_tracks_only()
+    test_schedule_round_trips_and_updates_in_place()
+    test_editing_a_schedule_keeps_its_last_run()
+    test_delete_schedule_reports_what_it_removed()
     test_recipe_round_trips_and_overwrites()
     test_recent_ok_tracks_orders_by_last_scanned_desc()
     test_search_ok_tracks_matches_substring()

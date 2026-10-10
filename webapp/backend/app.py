@@ -3,6 +3,7 @@ import os
 import random
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -14,6 +15,7 @@ import db
 import graph
 import omlx_client
 import plays
+import schedules
 import presets
 import similarity
 import typesafe_client
@@ -26,6 +28,9 @@ MAX_SMART_CANDIDATES = 150
 # How often to ask the renderers what is playing. Short enough that a 3-minute
 # track is not mistaken for a skip, long enough to stay cheap.
 PLAYBACK_POLL_SECONDS = 15
+# Schedules are weekly, so minute-level granularity is plenty and a cheap
+# query every minute keeps UI edits effective without a restart.
+SCHEDULE_CHECK_SECONDS = 60
 
 
 async def watch_playback():
@@ -57,6 +62,44 @@ async def watch_playback():
             continue
 
 
+def refresh_from_recipe(playlist_id: int) -> int:
+    """Rebuild a playlist from its stored recipe. Returns the track count."""
+    stored = db.load_recipe(app.state.conn, playlist_id)
+    if stored is None:
+        raise ValueError(f"kein Rezept für Playlist {playlist_id}")
+    paths = [t["path"] for t in select_tracks(PreviewRequest(**stored))]
+    return vuio_client.replace_playlist_tracks(playlist_id, paths)
+
+
+async def run_schedules():
+    """Refresh playlists whose weekly slot has come round.
+
+    Checks on a timer rather than sleeping until the next slot, so a schedule
+    edited in the UI takes effect without restarting anything, and a slot
+    missed while the container was down is caught up at the next check.
+    """
+    while True:
+        await asyncio.sleep(SCHEDULE_CHECK_SECONDS)
+        try:
+            now = datetime.now()
+            for schedule in db.list_schedules(app.state.conn):
+                if not schedules.is_due(schedule, now):
+                    continue
+                playlist_id = schedule["playlist_id"]
+                try:
+                    count = await asyncio.to_thread(refresh_from_recipe, playlist_id)
+                    result = f"{count} Tracks"
+                except Exception as e:
+                    result = f"Fehler: {e}"
+                # Recorded either way: a failing schedule must not retry in a
+                # tight loop until the next slot.
+                db.mark_schedule_run(app.state.conn, playlist_id, result)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            continue
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     conn = db.get_connection(DB_PATH)
@@ -68,10 +111,12 @@ async def lifespan(app: FastAPI):
     app.state.graph = graph.build_index(app.state.tracks)
     app.state.play_tracker = plays.PlayTracker()
     watcher = asyncio.create_task(watch_playback())
+    scheduler = asyncio.create_task(run_schedules())
     try:
         yield
     finally:
         watcher.cancel()
+        scheduler.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -121,6 +166,14 @@ class CastRequest(BaseModel):
     renderer_id: str
 
 
+class ScheduleRequest(BaseModel):
+    name: str
+    weekday: int
+    hour: int
+    minute: int
+    enabled: bool = True
+
+
 @app.get("/api/stats")
 def get_stats():
     return db.fetch_stats(app.state.conn)
@@ -162,6 +215,67 @@ def put_rating(req: RatingRequest):
             t["percentile"] = db.rated_percentile(t["played_percentile"], req.rating)
             break
     return {"path": req.path, "rating": req.rating}
+
+
+@app.get("/api/schedules")
+def get_schedules():
+    """Every scheduled playlist, with its recipe and when it next runs."""
+    now = datetime.now()
+    out = []
+    for schedule in db.list_schedules(app.state.conn):
+        playlist_id = schedule["playlist_id"]
+        out.append({
+            **schedule,
+            "describes": schedules.describe(schedule),
+            "next_run": schedules.next_occurrence(
+                schedule["weekday"], schedule["hour"], schedule["minute"], now
+            ).isoformat(timespec="minutes"),
+            "recipe": db.load_recipe(app.state.conn, playlist_id),
+        })
+    return {"schedules": out}
+
+
+@app.put("/api/schedules/{playlist_id}")
+def put_schedule(playlist_id: int, req: ScheduleRequest):
+    try:
+        schedules.validate(req.weekday, req.hour, req.minute)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if db.load_recipe(app.state.conn, playlist_id) is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Playlist {playlist_id} hat kein Rezept - ohne Rezept kann "
+                   "sie nicht automatisch neu befüllt werden.",
+        )
+    # Treat the slot just gone as already served, so a new schedule waits for
+    # its next real occurrence rather than firing on the next check.
+    previous = schedules.previous_occurrence(
+        req.weekday, req.hour, req.minute, datetime.now()
+    ).timestamp()
+    db.save_schedule(app.state.conn, playlist_id, req.name,
+                     req.weekday, req.hour, req.minute, req.enabled,
+                     starts_run_at=previous)
+    return {"playlist_id": playlist_id}
+
+
+@app.delete("/api/schedules/{playlist_id}")
+def remove_schedule(playlist_id: int):
+    if db.delete_schedule(app.state.conn, playlist_id) == 0:
+        raise HTTPException(status_code=404, detail=f"Kein Zeitplan für Playlist {playlist_id}")
+    return {"deleted": playlist_id}
+
+
+@app.post("/api/schedules/{playlist_id}/run")
+def run_schedule_now(playlist_id: int):
+    """Refresh immediately, without waiting for the weekly slot."""
+    try:
+        count = refresh_from_recipe(playlist_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except vuio_client.VuioError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    db.mark_schedule_run(app.state.conn, playlist_id, f"{count} Tracks")
+    return {"playlist_id": playlist_id, "track_count": count}
 
 
 @app.get("/api/now-playing")

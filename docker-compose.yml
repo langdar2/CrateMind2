@@ -30,4 +30,7 @@ services:
       - VUIO_MUSIC_DIR=/Volumes/Platte/Musik
       - TYPESAFE_API_KEY=${TYPESAFE_API_KEY}
       - OMLX_BASE_URL=http://192.168.0.3:8001
+      # Playlist schedules are entered as local times ("Montag 06:17"); the
+      # container is UTC by default, which would shift every slot by 2h.
+      - TZ=Europe/Berlin
     restart: unless-stopped

@@ -3,6 +3,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Playlists from "./pages/Playlists.jsx";
 import Renderers from "./pages/Renderers.jsx";
 import Graph from "./pages/Graph.jsx";
+import Schedules from "./pages/Schedules.jsx";
 import StatusBar from "./components/StatusBar.jsx";
 
 const DashboardIcon = () => (
@@ -41,6 +42,13 @@ const GraphIcon = () => (
   </svg>
 );
 
+const ScheduleIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="9" />
+    <polyline points="12 7 12 12 16 14" />
+  </svg>
+);
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -52,6 +60,9 @@ export default function App() {
           </NavLink>
           <NavLink to="/playlists" title="Playlists">
             <PlaylistIcon />
+          </NavLink>
+          <NavLink to="/schedules" title="Automatische Mixe">
+            <ScheduleIcon />
           </NavLink>
           <NavLink to="/graph" title="Klang-Graph">
             <GraphIcon />
@@ -65,6 +76,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/playlists" element={<Playlists />} />
+              <Route path="/schedules" element={<Schedules />} />
               <Route path="/graph" element={<Graph />} />
               <Route path="/renderers" element={<Renderers />} />
             </Routes>

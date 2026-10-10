@@ -38,5 +38,16 @@ export const castPlaylist = (playlistId, rendererId) =>
     body: JSON.stringify({ renderer_id: rendererId }),
   });
 export const getNowPlaying = () => request("/now-playing");
+export const getSchedules = () => request("/schedules");
+export const saveSchedule = (playlistId, body) =>
+  request(`/schedules/${playlistId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+export const deleteSchedule = (playlistId) =>
+  request(`/schedules/${playlistId}`, { method: "DELETE" });
+export const runSchedule = (playlistId) =>
+  request(`/schedules/${playlistId}/run`, { method: "POST" });
 export const getPlaybackStatus = (rendererId) =>
   request(`/playback-status${rendererId ? `?renderer_id=${encodeURIComponent(rendererId)}` : ""}`);
