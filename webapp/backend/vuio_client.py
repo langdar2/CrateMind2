@@ -103,6 +103,14 @@ def find_file_id(path: str) -> int:
     raise VuioError(f"Track not found in VuIO library: {vuio_path}")
 
 
+def list_playlists() -> list:
+    result = _call_tool("list_playlists", {})
+    try:
+        return result["playlists"]
+    except (KeyError, TypeError) as e:
+        raise VuioError(f"unexpected response shape from VuIO for tool 'list_playlists': {e}") from e
+
+
 def create_playlist(name: str, track_paths: list) -> int:
     created = _call_tool("create_playlist", {"name": name})
     try:

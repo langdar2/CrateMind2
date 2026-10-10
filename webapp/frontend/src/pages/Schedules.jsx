@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { getSchedules, saveSchedule, deleteSchedule, runSchedule } from "../api.js";
+import {
+  getSchedules,
+  getScheduleCandidates,
+  saveSchedule,
+  deleteSchedule,
+  runSchedule,
+} from "../api.js";
 
 const WEEKDAYS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 
@@ -25,15 +31,39 @@ function formatRun(entry) {
 
 export default function Schedules() {
   const [entries, setEntries] = useState(null);
+  const [candidates, setCandidates] = useState([]);
+  const [newPlaylist, setNewPlaylist] = useState("");
+  const [newSlot, setNewSlot] = useState({ weekday: 1, hour: 7, minute: 0 });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
 
   const load = () =>
-    getSchedules().then((r) => setEntries(r.schedules)).catch((e) => setError(e.message));
+    Promise.all([getSchedules(), getScheduleCandidates().catch(() => ({ candidates: [] }))])
+      .then(([s, c]) => {
+        setEntries(s.schedules);
+        setCandidates(c.candidates);
+      })
+      .catch((e) => setError(e.message));
 
   useEffect(() => {
     load();
   }, []);
+
+  const addSchedule = async () => {
+    const chosen = candidates.find((c) => String(c.playlist_id) === newPlaylist);
+    if (!chosen) return;
+    setError(null);
+    setBusy("new");
+    try {
+      await saveSchedule(chosen.playlist_id, { name: chosen.name, ...newSlot, enabled: true });
+      setNewPlaylist("");
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const update = async (entry, changes) => {
     setError(null);
@@ -72,15 +102,75 @@ export default function Schedules() {
     <div>
       {error && <p className="error">Fehler: {error}</p>}
 
-      {entries.length === 0 && (
-        <div className="tile">
-          <h3>Keine automatischen Mixe</h3>
+      <div className="tile">
+        <h3>Neuen Mix einplanen</h3>
+        {candidates.length === 0 ? (
           <p>
-            Lege im Playlists-Tab eine Playlist an - sie merkt sich ihr Rezept und
-            kann danach hier automatisch neu befüllt werden.
+            {entries.length === 0
+              ? "Noch keine Playlist mit Rezept vorhanden. Lege im Playlists-Tab eine an - sie merkt sich ihr Rezept und kann danach hier eingeplant werden."
+              : "Alle Playlists mit Rezept sind bereits eingeplant."}
           </p>
-        </div>
-      )}
+        ) : (
+          <>
+            <div className="slider-row" style={{ marginTop: "8px" }}>
+              <span className="label">Playlist</span>
+              <select
+                value={newPlaylist}
+                onChange={(e) => setNewPlaylist(e.target.value)}
+                style={{ gridColumn: "2 / 4" }}
+              >
+                <option value="">— auswählen —</option>
+                {candidates.map((c) => (
+                  <option key={c.playlist_id} value={c.playlist_id}>
+                    {c.name} ({c.track_count} Tracks)
+                  </option>
+                ))}
+              </select>
+              <span />
+            </div>
+
+            <div className="slider-row">
+              <span className="label">Wochentag</span>
+              <select
+                value={newSlot.weekday}
+                onChange={(e) => setNewSlot({ ...newSlot, weekday: +e.target.value })}
+                style={{ gridColumn: "2 / 4" }}
+              >
+                {WEEKDAYS.map((day, i) => (
+                  <option key={day} value={i}>{day}</option>
+                ))}
+              </select>
+              <span />
+            </div>
+
+            <div className="slider-row">
+              <span className="label">Uhrzeit</span>
+              <input
+                type="range" min="0" max="23"
+                value={newSlot.hour}
+                onChange={(e) => setNewSlot({ ...newSlot, hour: +e.target.value })}
+              />
+              <input
+                type="range" min="0" max="55" step="5"
+                value={newSlot.minute}
+                onChange={(e) => setNewSlot({ ...newSlot, minute: +e.target.value })}
+              />
+              <span className="slider-value">
+                {String(newSlot.hour).padStart(2, "0")}:{String(newSlot.minute).padStart(2, "0")}
+              </span>
+            </div>
+
+            <button
+              className="btn-primary"
+              disabled={!newPlaylist || busy === "new"}
+              onClick={addSchedule}
+              style={{ marginTop: "10px" }}
+            >
+              {busy === "new" ? "Wird angelegt..." : "Zeitplan anlegen"}
+            </button>
+          </>
+        )}
+      </div>
 
       {entries.map((entry) => (
         <div className="tile" key={entry.playlist_id}>

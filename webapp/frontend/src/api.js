@@ -39,6 +39,7 @@ export const castPlaylist = (playlistId, rendererId) =>
   });
 export const getNowPlaying = () => request("/now-playing");
 export const getSchedules = () => request("/schedules");
+export const getScheduleCandidates = () => request("/schedules/candidates");
 export const saveSchedule = (playlistId, body) =>
   request(`/schedules/${playlistId}`, {
     method: "PUT",

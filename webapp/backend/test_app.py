@@ -217,6 +217,35 @@ def test_schedule_round_trip_through_the_api():
         assert client.delete("/api/schedules/56").status_code == 404
 
 
+def test_candidates_only_offers_playlists_that_can_be_rebuilt():
+    """A playlist with no recipe has nothing to refresh from, so offering it
+    would just produce a 400 on save."""
+    app_module.db.save_recipe(app_module.app.state.conn, 61,
+                              {"mode": "manual", "criteria": {"min_bpm": 10}})
+    app_module.db.save_recipe(app_module.app.state.conn, 62,
+                              {"mode": "manual", "criteria": {"min_bpm": 10}})
+    app_module.db.save_schedule(app_module.app.state.conn, 62, "Schon geplant", 1, 6, 17)
+    listing = [{"id": 60, "name": "Ohne Rezept", "track_count": 5},
+               {"id": 61, "name": "Frei", "track_count": 9},
+               {"id": 62, "name": "Schon geplant", "track_count": 7}]
+
+    with patch.object(vuio_client, "list_playlists", return_value=listing):
+        with TestClient(app_module.app) as client:
+            response = client.get("/api/schedules/candidates")
+
+    ids = [c["playlist_id"] for c in response.json()["candidates"]]
+    assert ids == [61], ids
+
+
+def test_candidates_path_is_not_swallowed_by_the_id_route():
+    """"candidates" must not be parsed as a playlist id."""
+    with patch.object(vuio_client, "list_playlists", return_value=[]):
+        with TestClient(app_module.app) as client:
+            response = client.get("/api/schedules/candidates")
+    assert response.status_code == 200
+    assert "candidates" in response.json()
+
+
 def test_a_new_schedule_waits_for_its_next_slot():
     """Setting up "Monday 06:17" mid-week must not fire within the minute."""
     app_module.db.save_recipe(app_module.app.state.conn, 58,
@@ -461,6 +490,8 @@ if __name__ == "__main__":
     test_schedule_requires_a_recipe_to_refresh_from()
     test_schedule_rejects_impossible_times()
     test_schedule_round_trip_through_the_api()
+    test_candidates_only_offers_playlists_that_can_be_rebuilt()
+    test_candidates_path_is_not_swallowed_by_the_id_route()
     test_a_new_schedule_waits_for_its_next_slot()
     test_run_now_rebuilds_from_the_stored_recipe()
     test_now_playing_reports_nothing_when_idle()

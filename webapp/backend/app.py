@@ -235,6 +235,28 @@ def get_schedules():
     return {"schedules": out}
 
 
+@app.get("/api/schedules/candidates")
+def schedule_candidates():
+    """Playlists that could get a schedule but do not have one yet.
+
+    A playlist without a stored recipe is unusable here - there would be
+    nothing to rebuild it from - so those are left out rather than offered
+    and then rejected on save.
+    """
+    try:
+        playlists = vuio_client.list_playlists()
+    except vuio_client.VuioError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    scheduled = {s["playlist_id"] for s in db.list_schedules(app.state.conn)}
+    return {"candidates": [
+        {"playlist_id": p["id"], "name": p["name"] or f"Playlist {p['id']}",
+         "track_count": p.get("track_count")}
+        for p in playlists
+        if p["id"] not in scheduled and db.load_recipe(app.state.conn, p["id"]) is not None
+    ]}
+
+
 @app.put("/api/schedules/{playlist_id}")
 def put_schedule(playlist_id: int, req: ScheduleRequest):
     try:
