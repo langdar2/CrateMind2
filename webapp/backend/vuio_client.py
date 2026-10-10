@@ -111,8 +111,11 @@ def list_playlists() -> list:
         raise VuioError(f"unexpected response shape from VuIO for tool 'list_playlists': {e}") from e
 
 
-def create_playlist(name: str, track_paths: list) -> int:
-    created = _call_tool("create_playlist", {"name": name})
+def create_playlist(name: str, track_paths: list, description: str = None) -> int:
+    arguments = {"name": name}
+    if description:
+        arguments["description"] = description
+    created = _call_tool("create_playlist", arguments)
     try:
         playlist_id = created["playlist_id"]
     except (KeyError, TypeError) as e:

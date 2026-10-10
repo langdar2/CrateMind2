@@ -138,6 +138,37 @@ def test_fetch_local_plays_is_most_recent_first():
     assert [p["path"] for p in db.fetch_local_plays(conn)] == ["/music/b.mp3", "/music/a.mp3"]
 
 
+def test_description_round_trips_alongside_the_recipe():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    db.save_recipe(conn, 3, {"mode": "manual", "limit": 30})
+
+    db.save_description(conn, 3, "Treibende Gitarren für den Feierabend.")
+
+    assert db.load_description(conn, 3) == "Treibende Gitarren für den Feierabend."
+    # Saving a description must not clobber the recipe it sits next to.
+    assert db.load_recipe(conn, 3) == {"mode": "manual", "limit": 30}
+
+
+def test_description_works_without_a_recipe():
+    """A hand-built playlist has no recipe but can still be described."""
+    path = _make_test_db()
+    conn = db.get_connection(path)
+
+    db.save_description(conn, 9, "Von Hand zusammengestellt.")
+
+    assert db.load_description(conn, 9) == "Von Hand zusammengestellt."
+    assert db.load_description(conn, 404) is None
+
+
+def test_refreshing_replaces_the_description():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    db.save_description(conn, 3, "Alte Beschreibung")
+    db.save_description(conn, 3, "Neue Beschreibung")
+    assert db.load_description(conn, 3) == "Neue Beschreibung"
+
+
 def test_fingerprint_changes_when_a_track_is_analysed():
     """The watcher reloads on this, so it has to move when the library does."""
     path = _make_test_db()
@@ -443,6 +474,9 @@ if __name__ == "__main__":
     test_load_ok_tracks_returns_only_ok_with_embedding()
     test_load_ok_tracks_joins_preferences_and_leaves_unscored_null()
     test_percentile_ranks_scores_among_scored_tracks_only()
+    test_description_round_trips_alongside_the_recipe()
+    test_description_works_without_a_recipe()
+    test_refreshing_replaces_the_description()
     test_fingerprint_changes_when_a_track_is_analysed()
     test_fingerprint_is_stable_when_nothing_changed()
     test_schedule_round_trips_and_updates_in_place()

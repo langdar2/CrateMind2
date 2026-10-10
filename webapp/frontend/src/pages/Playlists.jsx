@@ -40,6 +40,7 @@ export default function Playlists() {
   const [preview, setPreview] = useState([]);
   const [playlistName, setPlaylistName] = useState("");
   const [naming, setNaming] = useState(false);
+  const [description, setDescription] = useState("");
   const [playlistId, setPlaylistId] = useState(null);
   const [lastRecipe, setLastRecipe] = useState(null);
   const [renderers, setRenderers] = useState([]);
@@ -170,8 +171,11 @@ export default function Playlists() {
         name: playlistName,
         track_paths: preview.map((t) => t.path),
         recipe: lastRecipe,
+        // Empty means "let the local model write one".
+        description: description || undefined,
       });
       setPlaylistId(result.playlist_id);
+      setDescription(result.description || "");
       setRenderers((await getRenderers()).renderers);
     } catch (e) {
       setError(e.message);
@@ -382,13 +386,23 @@ export default function Playlists() {
           <button onClick={fetchName} disabled={naming}>
             {naming ? "Denkt nach..." : "Name vorschlagen"}
           </button>
-          <button className="btn-primary" onClick={handleCreate}>In VuIO anlegen</button>
+          <input
+            type="text"
+            placeholder="Beschreibung (leer lassen = wird generiert)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            style={{ display: "block", width: "100%", marginTop: "8px" }}
+          />
+          <button className="btn-primary" onClick={handleCreate} style={{ marginTop: "8px" }}>
+            In VuIO anlegen
+          </button>
         </div>
       )}
 
       {playlistId && (
         <div className="tile">
           <h3>Auf Renderer abspielen</h3>
+          {description && <p className="playlist-description">{description}</p>}
           {renderers.map((r) => (
             <button key={r.id} className="btn-primary" onClick={() => handleCast(r.id)} style={{ marginRight: "8px" }}>
               {r.friendly_name}

@@ -97,8 +97,15 @@ def refresh_from_recipe(playlist_id: int) -> int:
     stored = db.load_recipe(app.state.conn, playlist_id)
     if stored is None:
         raise ValueError(f"kein Rezept für Playlist {playlist_id}")
-    paths = [t["path"] for t in select_tracks(PreviewRequest(**stored))]
-    return vuio_client.replace_playlist_tracks(playlist_id, paths)
+    tracks = select_tracks(PreviewRequest(**stored))
+    count = vuio_client.replace_playlist_tracks(playlist_id, [t["path"] for t in tracks])
+    # New tracks deserve a new blurb. VUIO cannot be told about it - there is
+    # no tool to change a playlist's description - so ours is the only copy
+    # that stays true after a refresh.
+    description = omlx_client.suggest_playlist_description(tracks)
+    if description:
+        db.save_description(app.state.conn, playlist_id, description)
+    return count
 
 
 async def run_schedules():
@@ -191,6 +198,8 @@ class CreatePlaylistRequest(BaseModel):
     # The preview request these tracks came from. Stored so the playlist can
     # be rebuilt later without the caller having to repeat the criteria.
     recipe: Optional[PreviewRequest] = None
+    # Left out, the local model writes one from the tracks.
+    description: Optional[str] = None
 
 
 class CastRequest(BaseModel):
@@ -276,6 +285,7 @@ def get_schedules():
                 schedule["weekday"], schedule["hour"], schedule["minute"], now
             ).isoformat(timespec="minutes"),
             "recipe": db.load_recipe(app.state.conn, playlist_id),
+            "description": db.load_description(app.state.conn, playlist_id),
         })
     return {"schedules": out}
 
@@ -544,13 +554,21 @@ def suggest_name(req: SuggestNameRequest):
 
 @app.post("/api/playlists")
 def add_playlist(req: CreatePlaylistRequest):
+    # Written before the playlist exists, since VUIO accepts a description
+    # only at creation and has no tool to change one afterwards.
+    wanted = set(req.track_paths)
+    tracks = [t for t in app.state.tracks if t["path"] in wanted]
+    description = req.description or omlx_client.suggest_playlist_description(tracks)
+
     try:
-        playlist_id = vuio_client.create_playlist(req.name, req.track_paths)
+        playlist_id = vuio_client.create_playlist(req.name, req.track_paths, description)
     except vuio_client.VuioError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     if req.recipe is not None:
         db.save_recipe(app.state.conn, playlist_id, req.recipe.model_dump())
-    return {"playlist_id": playlist_id}
+    if description:
+        db.save_description(app.state.conn, playlist_id, description)
+    return {"playlist_id": playlist_id, "description": description}
 
 
 @app.get("/api/renderers")
@@ -572,21 +590,18 @@ def refresh_playlist(playlist_id: int, req: Optional[PreviewRequest] = None):
     Discovery slots are drawn fresh each run, so repeated refreshes keep
     putting unheard music in front of you without a new playlist appearing.
     """
-    if req is None:
-        stored = db.load_recipe(app.state.conn, playlist_id)
-        if stored is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Kein Rezept für Playlist {playlist_id} gespeichert - "
-                       "Kriterien mitschicken oder die Playlist neu anlegen.",
-            )
-        req = PreviewRequest(**stored)
-    else:
+    if req is not None:
         db.save_recipe(app.state.conn, playlist_id, req.model_dump())
-
-    paths = [t["path"] for t in select_tracks(req)]
+    # One rebuild path, shared with the scheduler, so a refresh triggered here
+    # also rewrites the description instead of leaving a stale one behind.
     try:
-        count = vuio_client.replace_playlist_tracks(playlist_id, paths)
+        count = refresh_from_recipe(playlist_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Kein Rezept für Playlist {playlist_id} gespeichert - "
+                   "Kriterien mitschicken oder die Playlist neu anlegen.",
+        ) from None
     except vuio_client.VuioError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     return {"playlist_id": playlist_id, "track_count": count}

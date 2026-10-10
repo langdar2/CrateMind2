@@ -446,6 +446,13 @@ input[type="range"]:disabled {
   pointer-events: none;
 }
 
+.playlist-description {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 8px 0;
+}
+
 .graph-legend {
   display: flex;
   gap: 6px;

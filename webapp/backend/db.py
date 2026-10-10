@@ -131,6 +131,13 @@ def get_connection(db_path: str) -> sqlite3.Connection:
         )
         """
     )
+    # Added after the table shipped, so existing rows need the column grafted
+    # on. VUIO takes a description when a playlist is created but offers no
+    # tool to change one, so the current text has to live here: a refreshed
+    # playlist gets new tracks and needs a new description to match.
+    recipe_columns = {row[1] for row in conn.execute("PRAGMA table_info(playlist_recipes)")}
+    if recipe_columns and "description" not in recipe_columns:
+        conn.execute("ALTER TABLE playlist_recipes ADD COLUMN description TEXT")
     conn.commit()
     return conn
 
@@ -243,6 +250,30 @@ def load_recipe(conn: sqlite3.Connection, playlist_id: int):
         "SELECT recipe FROM playlist_recipes WHERE playlist_id = ?", (playlist_id,)
     ).fetchone()
     return json.loads(row[0]) if row else None
+
+
+def save_description(conn: sqlite3.Connection, playlist_id: int, description: str) -> None:
+    """Store the blurb for a playlist, creating the row if the recipe is absent.
+
+    A playlist built by hand has no recipe but can still be described, so the
+    row is created with an empty recipe rather than the description dropped.
+    """
+    conn.execute(
+        """
+        INSERT INTO playlist_recipes (playlist_id, recipe, updated_at, description)
+        VALUES (?, '{}', ?, ?)
+        ON CONFLICT(playlist_id) DO UPDATE SET description = excluded.description
+        """,
+        (playlist_id, time.time(), description),
+    )
+    conn.commit()
+
+
+def load_description(conn: sqlite3.Connection, playlist_id: int):
+    row = conn.execute(
+        "SELECT description FROM playlist_recipes WHERE playlist_id = ?", (playlist_id,)
+    ).fetchone()
+    return row[0] if row else None
 
 
 def _bpm_histogram(bpms: list, bucket_size: int = 20) -> list:

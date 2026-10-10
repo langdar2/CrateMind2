@@ -217,6 +217,51 @@ def test_schedule_round_trip_through_the_api():
         assert client.delete("/api/schedules/56").status_code == 404
 
 
+def test_create_generates_and_stores_a_description():
+    with patch.object(vuio_client, "create_playlist", return_value=71) as create, \
+         patch.object(omlx_client, "suggest_playlist_description", return_value="Treibend."):
+        with TestClient(app_module.app) as client:
+            response = client.post("/api/playlists",
+                                   json={"name": "x", "track_paths": ["/music/a.mp3"]})
+    assert response.json()["description"] == "Treibend."
+    # Handed to VUIO as well, since it only accepts one at creation.
+    assert create.call_args[0][2] == "Treibend."
+    assert app_module.db.load_description(app_module.app.state.conn, 71) == "Treibend."
+
+
+def test_create_keeps_a_description_the_caller_supplied():
+    """An explicit description must not be overwritten by the model."""
+    with patch.object(vuio_client, "create_playlist", return_value=72), \
+         patch.object(omlx_client, "suggest_playlist_description",
+                      return_value="vom Modell") as model:
+        with TestClient(app_module.app) as client:
+            client.post("/api/playlists", json={"name": "x", "track_paths": ["/music/a.mp3"],
+                                                "description": "von Hand"})
+    model.assert_not_called()
+    assert app_module.db.load_description(app_module.app.state.conn, 72) == "von Hand"
+
+
+def test_create_survives_the_model_being_down():
+    with patch.object(vuio_client, "create_playlist", return_value=73), \
+         patch.object(omlx_client, "suggest_playlist_description", return_value=None):
+        with TestClient(app_module.app) as client:
+            response = client.post("/api/playlists",
+                                   json={"name": "x", "track_paths": ["/music/a.mp3"]})
+    assert response.status_code == 200
+    assert response.json()["description"] is None
+
+
+def test_refresh_rewrites_the_description_for_the_new_tracks():
+    app_module.db.save_recipe(app_module.app.state.conn, 74,
+                              {"mode": "manual", "criteria": {"min_bpm": 10}})
+    app_module.db.save_description(app_module.app.state.conn, 74, "Alte Beschreibung")
+    with patch.object(vuio_client, "replace_playlist_tracks", return_value=1), \
+         patch.object(omlx_client, "suggest_playlist_description", return_value="Neue Beschreibung"):
+        with TestClient(app_module.app) as client:
+            client.post("/api/playlists/74/refresh")
+    assert app_module.db.load_description(app_module.app.state.conn, 74) == "Neue Beschreibung"
+
+
 def test_graph_playlist_returns_preview_shaped_tracks():
     """The Playlists tab takes this over verbatim, so the shape must match."""
     with TestClient(app_module.app) as client:
@@ -534,6 +579,10 @@ if __name__ == "__main__":
     test_schedule_requires_a_recipe_to_refresh_from()
     test_schedule_rejects_impossible_times()
     test_schedule_round_trip_through_the_api()
+    test_create_generates_and_stores_a_description()
+    test_create_keeps_a_description_the_caller_supplied()
+    test_create_survives_the_model_being_down()
+    test_refresh_rewrites_the_description_for_the_new_tracks()
     test_graph_playlist_returns_preview_shaped_tracks()
     test_graph_playlist_404s_for_unknown_artists()
     test_suggest_name_passes_the_previewed_tracks_to_the_model()

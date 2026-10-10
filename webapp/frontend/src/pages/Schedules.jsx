@@ -181,6 +181,9 @@ export default function Schedules() {
             <span className="chip">{summarise(entry.recipe)}</span>
             {!entry.enabled && <span className="chip">pausiert</span>}
           </div>
+          {entry.description && (
+            <p className="playlist-description">{entry.description}</p>
+          )}
 
           <div className="slider-row" style={{ marginTop: "12px" }}>
             <span className="label">Wochentag</span>

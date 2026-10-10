@@ -83,6 +83,55 @@ def _describe_tracks(tracks: list) -> str:
     return ". ".join(parts)
 
 
+_DESCRIPTION_PROMPT = (
+    "Du schreibst kurze Beschreibungen für Musik-Playlists. "
+    "Ein bis zwei Sätze, höchstens 200 Zeichen. Beschreibe die Stimmung und "
+    "was den Hörer erwartet. Keine Aufzählung aller Künstler, keine "
+    "Anführungszeichen, keine Überschrift. Deutsch."
+)
+
+MAX_DESCRIPTION_LENGTH = 300
+
+
+def _describe_tracks_fully(tracks: list) -> str:
+    """Like _describe_tracks, plus a few titles.
+
+    Titles carry information the aggregates lose - a set can be 120 BPM and
+    "fröhlich" and still be Christmas music, which only the titles reveal.
+    """
+    base = _describe_tracks(tracks)
+    titles = []
+    for track in tracks[:8]:
+        name = track.get("path", "").rsplit("/", 1)[-1].rsplit(".", 1)[0]
+        if name:
+            titles.append(name)
+    return f"{base}. Beispieltitel: {'; '.join(titles)}" if titles else base
+
+
+def suggest_playlist_description(tracks: list) -> str:
+    """A one-or-two sentence description, or None if the model is unavailable."""
+    if not tracks:
+        return None
+    body = {
+        "model": OMLX_MODEL,
+        "messages": [
+            {"role": "system", "content": _DESCRIPTION_PROMPT},
+            {"role": "user", "content": _describe_tracks_fully(tracks)},
+        ],
+        "max_tokens": 150,
+        "temperature": 0.7,
+    }
+    try:
+        response = httpx.post(f"{OMLX_BASE_URL}/v1/chat/completions", json=body, timeout=30.0)
+        response.raise_for_status()
+        text = response.json()["choices"][0]["message"]["content"]
+    except (httpx.HTTPError, KeyError, IndexError, TypeError):
+        return None
+
+    text = " ".join(text.strip().strip('"\'`*').split())
+    return text[:MAX_DESCRIPTION_LENGTH] if text else None
+
+
 def suggest_playlist_name(tracks: list) -> str:
     """A name for this set of tracks, or None if the model is unavailable.
 
