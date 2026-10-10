@@ -262,6 +262,16 @@ def test_refresh_rewrites_the_description_for_the_new_tracks():
     assert app_module.db.load_description(app_module.app.state.conn, 74) == "Neue Beschreibung"
 
 
+def test_preview_carries_artist_album_title_for_display():
+    """The list shows these instead of the raw path."""
+    with TestClient(app_module.app) as client:
+        response = client.post("/api/playlists/preview",
+                               json={"mode": "manual", "criteria": {"min_bpm": 10}})
+    display = response.json()["tracks"][0]["display"]
+    assert set(display) == {"artist", "album", "title"}
+    assert all(display.values()), display
+
+
 def test_graph_playlist_returns_preview_shaped_tracks():
     """The Playlists tab takes this over verbatim, so the shape must match."""
     with TestClient(app_module.app) as client:
@@ -583,6 +593,7 @@ if __name__ == "__main__":
     test_create_keeps_a_description_the_caller_supplied()
     test_create_survives_the_model_being_down()
     test_refresh_rewrites_the_description_for_the_new_tracks()
+    test_preview_carries_artist_album_title_for_display()
     test_graph_playlist_returns_preview_shaped_tracks()
     test_graph_playlist_404s_for_unknown_artists()
     test_suggest_name_passes_the_previewed_tracks_to_the_model()

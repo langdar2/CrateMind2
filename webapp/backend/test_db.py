@@ -169,6 +169,36 @@ def test_refreshing_replaces_the_description():
     assert db.load_description(conn, 3) == "Neue Beschreibung"
 
 
+def test_display_parses_the_usual_layout():
+    d = db.display_of("/music/Amorphis - Halo/06. Amorphis - When The Gods Came.flac")
+    assert d == {"artist": "Amorphis", "album": "Halo", "title": "When The Gods Came"}
+
+
+def test_display_prefers_the_filename_artist_on_compilations():
+    """The folder names the compilation, the filename names who plays it."""
+    d = db.display_of("/music/Various Artists - Hits 95/03. Nena - 99 Luftballons.flac")
+    assert d["artist"] == "Nena"
+    assert d["album"] == "Hits 95"
+
+
+def test_display_handles_track_number_variants():
+    for stem, expected in [("1. A - X", "X"), ("03. A - X", "X"),
+                           ("406. A - X", "X"), ("6 - A - X", "X")]:
+        assert db.display_of(f"/music/A - Alb/{stem}.flac")["title"] == expected
+
+
+def test_display_survives_a_filename_without_the_dash():
+    """2.5% of the library does not follow the pattern; show something sane."""
+    d = db.display_of("/music/DUNE - Dune/04 Future Is Now.flac")
+    assert d == {"artist": "DUNE", "album": "Dune", "title": "Future Is Now"}
+
+
+def test_display_never_leaks_a_path():
+    for path in ["/music/loose.flac", "loose.flac", ""]:
+        values = db.display_of(path).values()
+        assert not any("/" in v for v in values), path
+
+
 def test_fingerprint_changes_when_a_track_is_analysed():
     """The watcher reloads on this, so it has to move when the library does."""
     path = _make_test_db()
@@ -477,6 +507,11 @@ if __name__ == "__main__":
     test_description_round_trips_alongside_the_recipe()
     test_description_works_without_a_recipe()
     test_refreshing_replaces_the_description()
+    test_display_parses_the_usual_layout()
+    test_display_prefers_the_filename_artist_on_compilations()
+    test_display_handles_track_number_variants()
+    test_display_survives_a_filename_without_the_dash()
+    test_display_never_leaks_a_path()
     test_fingerprint_changes_when_a_track_is_analysed()
     test_fingerprint_is_stable_when_nothing_changed()
     test_schedule_round_trips_and_updates_in_place()

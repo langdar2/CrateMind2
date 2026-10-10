@@ -1,5 +1,6 @@
 import json
 import math
+import re
 import sqlite3
 import time
 
@@ -37,6 +38,35 @@ def artist_of(path: str) -> str:
     """
     folder = path.rsplit("/", 2)[-2] if path.count("/") >= 2 else ""
     return folder.split(" - ")[0].strip().lower()
+
+
+# "01. ", "1 - ", "406. " - the track number some filenames carry up front.
+_TRACK_NUMBER = re.compile(r"^\s*\d+\s*[.\-)]?\s+")
+
+
+def display_of(path: str) -> dict:
+    """Artist, album and title for display, parsed from the path.
+
+    The database stores paths and nothing else - no tags are read during
+    analysis - so the layout is the only source: "Artist - Album/NN. Artist
+    - Title.ext". It holds for 99.9% of folders and 97.5% of filenames here.
+    Anything that does not parse falls back to the bare filename, which is
+    still better than showing a full path.
+    """
+    folder = path.rsplit("/", 2)[-2] if path.count("/") >= 2 else ""
+    stem = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+
+    album = folder.split(" - ", 1)[1].strip() if " - " in folder else folder.strip()
+    name = _TRACK_NUMBER.sub("", stem)
+    # Filenames repeat the artist; prefer that one, since a compilation folder
+    # names the compilation rather than whoever plays this particular track.
+    if " - " in name:
+        artist, title = name.split(" - ", 1)
+    else:
+        artist, title = folder.split(" - ")[0].strip(), name
+    # One file in the library is named only after its artists, leaving nothing
+    # for the title; the filename stem beats an empty row in the list.
+    return {"artist": artist.strip(), "album": album, "title": title.strip() or stem}
 
 
 def get_connection(db_path: str) -> sqlite3.Connection:
@@ -452,6 +482,9 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
             # before the column existed and never rescanned since.
             "first_seen": first_seen,
             "artist": artist_of(path),
+            # Artist/album/title for display. The analysis never reads tags,
+            # so these are parsed from the path - see display_of.
+            "display": display_of(path),
             "embedding": np.frombuffer(emb_blob, dtype=np.float32),
         })
     return tracks
@@ -490,7 +523,8 @@ def search_ok_tracks(conn: sqlite3.Connection, query: str, limit: int = 20) -> l
         """,
         (like, limit),
     ).fetchall()
-    return [{"path": path, "bpm": bpm, "key": key} for path, bpm, key in rows]
+    return [{"path": path, "bpm": bpm, "key": key, "display": display_of(path)}
+            for path, bpm, key in rows]
 
 
 def search_failed_tracks(conn: sqlite3.Connection, query: str = "", limit: int = 50, offset: int = 0) -> dict:

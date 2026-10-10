@@ -8,6 +8,7 @@ import {
   searchTracks,
   suggestPlaylistName,
 } from "../api.js";
+import TrackLabel from "../components/TrackLabel.jsx";
 
 const MODES = [
   { id: "manual", label: "Manuell" },
@@ -310,11 +311,14 @@ export default function Playlists() {
                   style={{ cursor: "pointer" }}
                   onClick={() => {
                     setSeedPath(t.path);
-                    setSeedQuery(t.path);
+                    // The box shows what was picked, not where it lives.
+                    setSeedQuery(t.display
+                      ? `${t.display.artist} - ${t.display.title}`
+                      : t.path.split("/").pop());
                     setSeedResults([]);
                   }}
                 >
-                  <span className="path">{t.path}</span>
+                  <span className="path"><TrackLabel track={t} /></span>
                 </li>
               ))}
             </ul>
@@ -358,7 +362,7 @@ export default function Playlists() {
             {preview.map((t, i) => (
               <li key={t.path} className="card-row">
                 <span className="path">
-                  {t.path}
+                  <TrackLabel track={t} />
                   <span className="chips">
                     <span className="chip">{t.bpm ? t.bpm.toFixed(0) : "?"} BPM</span>
                     <span className="chip">{t.key}</span>

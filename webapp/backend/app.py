@@ -427,6 +427,7 @@ def graph_playlist(req: GraphPlaylistRequest):
             "danceability": t["danceability"], "mood_happy": t["mood_happy"],
             "mood_aggressive": t["mood_aggressive"], "mood_relaxed": t["mood_relaxed"],
             "mood_party": t["mood_party"], "percentile": t.get("percentile"),
+            "display": t.get("display"),
             "first_seen": t.get("first_seen"),
             "is_new": presets.is_fresh(t, now, 0),
         }
@@ -529,6 +530,7 @@ def preview_playlist(req: PreviewRequest):
             "danceability": t["danceability"], "mood_happy": t["mood_happy"],
             "mood_aggressive": t["mood_aggressive"], "mood_relaxed": t["mood_relaxed"],
             "mood_party": t["mood_party"], "percentile": t.get("percentile"),
+            "display": t.get("display"),
             # When the library first saw the file, plus the verdict against
             # this request's own window, so a client can badge a track as new
             # without repeating the fresh_days arithmetic.

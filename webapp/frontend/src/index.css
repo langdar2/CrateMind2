@@ -446,6 +446,20 @@ input[type="range"]:disabled {
   pointer-events: none;
 }
 
+.track-title {
+  display: block;
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+.track-meta {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .playlist-description {
   color: var(--text-secondary);
   font-size: 14px;
