@@ -166,6 +166,10 @@ class CastRequest(BaseModel):
     renderer_id: str
 
 
+class SuggestNameRequest(BaseModel):
+    track_paths: list
+
+
 class ScheduleRequest(BaseModel):
     name: str
     weekday: int
@@ -454,6 +458,19 @@ def preview_playlist(req: PreviewRequest):
         }
         for t in select_tracks(req)
     ]}
+
+
+@app.post("/api/playlists/suggest-name")
+def suggest_name(req: SuggestNameRequest):
+    """A name for an already-previewed set of tracks.
+
+    Separate from /preview on purpose: the manual tab re-previews on every
+    slider move, and the local model takes ~2s per call. Naming happens once,
+    when the user is about to save.
+    """
+    by_path = {t["path"]: t for t in app.state.tracks}
+    tracks = [by_path[p] for p in req.track_paths if p in by_path]
+    return {"name": omlx_client.suggest_playlist_name(tracks)}
 
 
 @app.post("/api/playlists")

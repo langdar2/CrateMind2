@@ -217,6 +217,33 @@ def test_schedule_round_trip_through_the_api():
         assert client.delete("/api/schedules/56").status_code == 404
 
 
+def test_suggest_name_passes_the_previewed_tracks_to_the_model():
+    with patch.object(omlx_client, "suggest_playlist_name", return_value="Punk am Montag") as mock:
+        with TestClient(app_module.app) as client:
+            response = client.post("/api/playlists/suggest-name",
+                                   json={"track_paths": ["/music/a.mp3"]})
+    assert response.json() == {"name": "Punk am Montag"}
+    assert [t["path"] for t in mock.call_args[0][0]] == ["/music/a.mp3"]
+
+
+def test_suggest_name_ignores_paths_outside_the_library():
+    with patch.object(omlx_client, "suggest_playlist_name", return_value="X") as mock:
+        with TestClient(app_module.app) as client:
+            client.post("/api/playlists/suggest-name",
+                        json={"track_paths": ["/music/a.mp3", "/nope.mp3"]})
+    assert [t["path"] for t in mock.call_args[0][0]] == ["/music/a.mp3"]
+
+
+def test_suggest_name_reports_null_when_the_model_is_unavailable():
+    """The UI falls back to a manual name rather than showing an error."""
+    with patch.object(omlx_client, "suggest_playlist_name", return_value=None):
+        with TestClient(app_module.app) as client:
+            response = client.post("/api/playlists/suggest-name",
+                                   json={"track_paths": ["/music/a.mp3"]})
+    assert response.status_code == 200
+    assert response.json() == {"name": None}
+
+
 def test_candidates_only_offers_playlists_that_can_be_rebuilt():
     """A playlist with no recipe has nothing to refresh from, so offering it
     would just produce a 400 on save."""
@@ -490,6 +517,9 @@ if __name__ == "__main__":
     test_schedule_requires_a_recipe_to_refresh_from()
     test_schedule_rejects_impossible_times()
     test_schedule_round_trip_through_the_api()
+    test_suggest_name_passes_the_previewed_tracks_to_the_model()
+    test_suggest_name_ignores_paths_outside_the_library()
+    test_suggest_name_reports_null_when_the_model_is_unavailable()
     test_candidates_only_offers_playlists_that_can_be_rebuilt()
     test_candidates_path_is_not_swallowed_by_the_id_route()
     test_a_new_schedule_waits_for_its_next_slot()

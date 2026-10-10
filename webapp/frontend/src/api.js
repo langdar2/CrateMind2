@@ -24,6 +24,12 @@ export const previewPlaylist = (body) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+export const suggestPlaylistName = (trackPaths) =>
+  request("/playlists/suggest-name", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ track_paths: trackPaths }),
+  });
 export const createPlaylist = (body) =>
   request("/playlists", {
     method: "POST",

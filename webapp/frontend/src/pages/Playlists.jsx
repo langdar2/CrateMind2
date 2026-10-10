@@ -6,6 +6,7 @@ import {
   getRenderers,
   castPlaylist,
   searchTracks,
+  suggestPlaylistName,
 } from "../api.js";
 
 const MODES = [
@@ -38,6 +39,7 @@ export default function Playlists() {
   const [moodMins, setMoodMins] = useState({});
   const [preview, setPreview] = useState([]);
   const [playlistName, setPlaylistName] = useState("");
+  const [naming, setNaming] = useState(false);
   const [playlistId, setPlaylistId] = useState(null);
   const [lastRecipe, setLastRecipe] = useState(null);
   const [renderers, setRenderers] = useState([]);
@@ -127,6 +129,20 @@ export default function Playlists() {
   };
 
   const removeTrack = (path) => setPreview(preview.filter((t) => t.path !== path));
+
+  const fetchName = async () => {
+    setError(null);
+    setNaming(true);
+    try {
+      const { name } = await suggestPlaylistName(preview.map((t) => t.path));
+      if (name) setPlaylistName(name);
+      else setError("Kein Namensvorschlag - das lokale Modell antwortet nicht.");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setNaming(false);
+    }
+  };
 
   const handleCreate = async () => {
     setError(null);
@@ -344,6 +360,9 @@ export default function Playlists() {
             value={playlistName}
             onChange={(e) => setPlaylistName(e.target.value)}
           />
+          <button onClick={fetchName} disabled={naming}>
+            {naming ? "Denkt nach..." : "Name vorschlagen"}
+          </button>
           <button className="btn-primary" onClick={handleCreate}>In VuIO anlegen</button>
         </div>
       )}
