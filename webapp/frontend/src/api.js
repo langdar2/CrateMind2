@@ -12,6 +12,12 @@ async function request(path, options) {
 export const getStats = () => request("/stats");
 export const getRecentTracks = (limit = 10) => request(`/tracks/recent?limit=${limit}`);
 export const getGraphArtists = () => request("/graph/artists");
+export const getGraphPlaylist = (artists, limit = 30) =>
+  request("/graph/playlist", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ artists, limit }),
+  });
 export const getArtistGraph = (artist, limit = 20) =>
   request(`/graph/${encodeURIComponent(artist)}?limit=${limit}`);
 export const searchTracks = (q) => request(`/tracks?q=${encodeURIComponent(q)}&limit=10`);

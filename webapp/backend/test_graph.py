@@ -63,6 +63,30 @@ def test_unscored_artists_report_no_percentile():
     assert nodes["helene fischer"]["track_count"] == 6
 
 
+def test_tracks_for_artists_collects_and_orders_by_taste():
+    index = graph.build_index(_library())
+    collected = graph.tracks_for_artists(index, ["broilers", "feine sahne"])
+
+    assert len(collected) == 9
+    # feine sahne is the better-liked of the two, so its tracks come first.
+    assert collected[0]["artist"] == "feine sahne"
+
+
+def test_tracks_for_artists_keeps_unscored_but_sorts_them_last():
+    """Most of the library has no Apple score; dropping it would empty
+    whole neighbourhoods."""
+    index = graph.build_index(_library())
+    collected = graph.tracks_for_artists(index, ["broilers", "helene fischer"])
+
+    assert {t["artist"] for t in collected} == {"broilers", "helene fischer"}
+    assert collected[-1]["percentile"] is None
+
+
+def test_tracks_for_artists_ignores_names_not_in_the_graph():
+    index = graph.build_index(_library())
+    assert graph.tracks_for_artists(index, ["nobody", "one hit wonder"]) == []
+
+
 def test_unknown_artist_returns_none():
     assert graph.neighbourhood(graph.build_index(_library()), "nobody") is None
 
@@ -78,6 +102,9 @@ if __name__ == "__main__":
     test_neighbourhood_centres_on_the_artist_and_ranks_by_sound()
     test_edges_connect_neighbours_to_each_other_not_just_the_centre()
     test_unscored_artists_report_no_percentile()
+    test_tracks_for_artists_collects_and_orders_by_taste()
+    test_tracks_for_artists_keeps_unscored_but_sorts_them_last()
+    test_tracks_for_artists_ignores_names_not_in_the_graph()
     test_unknown_artist_returns_none()
     test_empty_library_does_not_crash()
     print("All graph tests passed.")

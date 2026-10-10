@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from "d3-force";
-import { getGraphArtists, getArtistGraph } from "../api.js";
+import { useNavigate } from "react-router-dom";
+import { getGraphArtists, getArtistGraph, getGraphPlaylist } from "../api.js";
 
 const WIDTH = 900;
 const HEIGHT = 560;
@@ -27,6 +28,8 @@ export default function Graph() {
   const [query, setQuery] = useState("");
   const [error, setError] = useState(null);
   const [layout, setLayout] = useState({ nodes: [], edges: [] });
+  const [building, setBuilding] = useState(false);
+  const navigate = useNavigate();
   const simRef = useRef(null);
 
   useEffect(() => {
@@ -76,6 +79,22 @@ export default function Graph() {
     return () => sim.stop();
   }, [data]);
 
+  const buildPlaylist = async () => {
+    setError(null);
+    setBuilding(true);
+    try {
+      const { tracks } = await getGraphPlaylist(data.nodes.map((n) => n.id));
+      // Hand the preview to the Playlists tab, which already knows how to
+      // reorder, name and save one - rather than rebuilding all that here.
+      sessionStorage.setItem("cratemind:graphPreview", JSON.stringify(tracks));
+      navigate("/playlists");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBuilding(false);
+    }
+  };
+
   const matches = useMemo(() => {
     if (query.length < 2) return [];
     const q = query.toLowerCase();
@@ -123,6 +142,14 @@ export default function Graph() {
           {centre?.percentile != null && <span className="chip">Top {Math.max(1, 100 - centre.percentile)}%</span>}
           <span className="chip">{data.nodes.length - 1} ähnliche Künstler</span>
         </div>
+        <button
+          className="btn-primary"
+          style={{ marginTop: "10px" }}
+          disabled={building}
+          onClick={buildPlaylist}
+        >
+          {building ? "Stelle zusammen..." : "Diese Künstler als Playlist"}
+        </button>
       </div>
 
       <div className="tile">

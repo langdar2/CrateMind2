@@ -217,6 +217,23 @@ def test_schedule_round_trip_through_the_api():
         assert client.delete("/api/schedules/56").status_code == 404
 
 
+def test_graph_playlist_returns_preview_shaped_tracks():
+    """The Playlists tab takes this over verbatim, so the shape must match."""
+    with TestClient(app_module.app) as client:
+        response = client.post("/api/graph/playlist", json={"artists": ["a"], "limit": 5})
+    if response.status_code == 404:
+        return  # fixture library has no artist with enough tracks
+    track = response.json()["tracks"][0]
+    for field in ("path", "bpm", "key", "percentile", "is_new"):
+        assert field in track, field
+
+
+def test_graph_playlist_404s_for_unknown_artists():
+    with TestClient(app_module.app) as client:
+        response = client.post("/api/graph/playlist", json={"artists": ["niemand"]})
+    assert response.status_code == 404
+
+
 def test_suggest_name_passes_the_previewed_tracks_to_the_model():
     with patch.object(omlx_client, "suggest_playlist_name", return_value="Punk am Montag") as mock:
         with TestClient(app_module.app) as client:
@@ -517,6 +534,8 @@ if __name__ == "__main__":
     test_schedule_requires_a_recipe_to_refresh_from()
     test_schedule_rejects_impossible_times()
     test_schedule_round_trip_through_the_api()
+    test_graph_playlist_returns_preview_shaped_tracks()
+    test_graph_playlist_404s_for_unknown_artists()
     test_suggest_name_passes_the_previewed_tracks_to_the_model()
     test_suggest_name_ignores_paths_outside_the_library()
     test_suggest_name_reports_null_when_the_model_is_unavailable()

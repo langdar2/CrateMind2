@@ -348,6 +348,18 @@ def load_ratings(conn: sqlite3.Connection) -> dict:
     return dict(conn.execute("SELECT path, rating FROM ratings").fetchall())
 
 
+def library_fingerprint(conn: sqlite3.Connection) -> tuple:
+    """Cheap signal for "the analysed library changed".
+
+    Counting rows and taking the newest scan timestamp costs a couple of
+    milliseconds, against ~140ms to reload and reindex everything, so the
+    watcher can check often and only reload when it matters.
+    """
+    return conn.execute(
+        "SELECT COUNT(*), COALESCE(MAX(last_scanned), 0) FROM tracks WHERE status = 'ok'"
+    ).fetchone()
+
+
 def load_ok_tracks(conn: sqlite3.Connection) -> list:
     rows = conn.execute(
         """

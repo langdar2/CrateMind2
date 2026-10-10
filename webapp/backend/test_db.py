@@ -138,6 +138,28 @@ def test_fetch_local_plays_is_most_recent_first():
     assert [p["path"] for p in db.fetch_local_plays(conn)] == ["/music/b.mp3", "/music/a.mp3"]
 
 
+def test_fingerprint_changes_when_a_track_is_analysed():
+    """The watcher reloads on this, so it has to move when the library does."""
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    before = db.library_fingerprint(conn)
+
+    analysis_db.upsert_track(conn, "/music/new.mp3", mtime=1.0, size=100, status="ok")
+    analysis_db.upsert_features(conn, "/music/new.mp3", {
+        "bpm": 128.0, "key": "D minor", "mood_happy": 0.5, "mood_aggressive": 0.5,
+        "mood_relaxed": 0.5, "mood_party": 0.5, "danceability": 0.5,
+        "embedding": np.ones(200, dtype=np.float32),
+    })
+
+    assert db.library_fingerprint(conn) != before
+
+
+def test_fingerprint_is_stable_when_nothing_changed():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    assert db.library_fingerprint(conn) == db.library_fingerprint(conn)
+
+
 def test_schedule_round_trips_and_updates_in_place():
     path = _make_test_db()
     conn = db.get_connection(path)
@@ -421,6 +443,8 @@ if __name__ == "__main__":
     test_load_ok_tracks_returns_only_ok_with_embedding()
     test_load_ok_tracks_joins_preferences_and_leaves_unscored_null()
     test_percentile_ranks_scores_among_scored_tracks_only()
+    test_fingerprint_changes_when_a_track_is_analysed()
+    test_fingerprint_is_stable_when_nothing_changed()
     test_schedule_round_trips_and_updates_in_place()
     test_editing_a_schedule_keeps_its_last_run()
     test_delete_schedule_reports_what_it_removed()

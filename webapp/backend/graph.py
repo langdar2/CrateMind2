@@ -105,5 +105,24 @@ def neighbourhood(index: dict, artist: str, limit: int = 20) -> dict:
     return {"center": artist, "nodes": nodes, "edges": edges}
 
 
+def tracks_for_artists(index: dict, artists: list) -> list:
+    """Every analysed track by the named artists, best-liked first.
+
+    Ordering is by taste so that capping per artist keeps each one's
+    strongest tracks rather than whichever the database returned first.
+    Unscored tracks sort last but are kept - most of the library has no
+    Apple score, and dropping them would empty whole neighbourhoods.
+    """
+    wanted = [a for a in artists if a in index["tracks"]]
+    collected = [t for a in wanted for t in index["tracks"][a]]
+    # percentile, not score: this module reports and colours by percentile
+    # everywhere else, and mixing the two notions here would be a trap.
+    collected.sort(
+        key=lambda t: (t.get("percentile") is not None, t.get("percentile") or 0),
+        reverse=True,
+    )
+    return collected
+
+
 def list_artists(index: dict) -> list:
     return [_summary(a, index["tracks"][a]) for a in index["artists"]]

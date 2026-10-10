@@ -31,6 +31,36 @@ PLAYBACK_POLL_SECONDS = 15
 # Schedules are weekly, so minute-level granularity is plenty and a cheap
 # query every minute keeps UI edits effective without a restart.
 SCHEDULE_CHECK_SECONDS = 60
+# The analysis service rescans every 30 minutes, so checking every couple of
+# minutes picks up new music promptly without polling for nothing.
+LIBRARY_CHECK_SECONDS = 120
+
+
+def reload_library():
+    """Re-read the analysed tracks and rebuild the artist graph from them."""
+    app.state.tracks = db.load_ok_tracks(app.state.conn)
+    app.state.graph = graph.build_index(app.state.tracks)
+    app.state.library_fingerprint = db.library_fingerprint(app.state.conn)
+
+
+async def watch_library():
+    """Pick up tracks the analysis service has added since startup.
+
+    The analysis container writes the database on its own schedule and has no
+    way to tell us, so new music used to stay invisible until the webapp was
+    restarted. Reloading costs ~140ms, the change check 2ms, hence the
+    fingerprint rather than an unconditional reload.
+    """
+    while True:
+        await asyncio.sleep(LIBRARY_CHECK_SECONDS)
+        try:
+            current = await asyncio.to_thread(db.library_fingerprint, app.state.conn)
+            if current != app.state.library_fingerprint:
+                await asyncio.to_thread(reload_library)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            continue
 
 
 async def watch_playback():
@@ -104,19 +134,20 @@ async def run_schedules():
 async def lifespan(app: FastAPI):
     conn = db.get_connection(DB_PATH)
     app.state.conn = conn
-    app.state.tracks = db.load_ok_tracks(conn)
-    # Centroids over 33k embeddings take a moment, so build them once here
-    # rather than per request. Picks up new tracks whenever the container
-    # restarts; the analysis service writes the DB but cannot reload us.
-    app.state.graph = graph.build_index(app.state.tracks)
+    # Centroids over 33k embeddings are cheap but not free, so the track list
+    # and the artist graph are held in memory and refreshed by watch_library
+    # when the analysis service adds something.
+    reload_library()
     app.state.play_tracker = plays.PlayTracker()
     watcher = asyncio.create_task(watch_playback())
     scheduler = asyncio.create_task(run_schedules())
+    librarian = asyncio.create_task(watch_library())
     try:
         yield
     finally:
         watcher.cancel()
         scheduler.cancel()
+        librarian.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -166,6 +197,14 @@ class CastRequest(BaseModel):
     renderer_id: str
 
 
+class GraphPlaylistRequest(BaseModel):
+    artists: list
+    # Lower than the usual cap: a neighbourhood is already a handful of
+    # artists, so five each would let one of them dominate.
+    per_artist: int = 3
+    limit: int = 30
+
+
 class SuggestNameRequest(BaseModel):
     track_paths: list
 
@@ -194,9 +233,11 @@ def post_play(req: PlayRequest):
         raise HTTPException(status_code=404, detail=f"Track nicht gefunden: {req.path}")
     result = db.count_play(app.state.conn, req.path, req.skipped)
     # One play shifts this track's score and therefore every percentile, so
-    # reload rather than patch. ponytail: a full reload per play is fine at
-    # one listener and ~33k tracks (tens of ms); batch it if that changes.
-    app.state.tracks = db.load_ok_tracks(app.state.conn)
+    # reload rather than patch - and go through reload_library so the artist
+    # graph sees the new percentiles too, which it did not before.
+    # ponytail: a full reload per play is fine at one listener and ~33k
+    # tracks (~140ms); batch it if that changes.
+    reload_library()
     return result
 
 
@@ -353,6 +394,34 @@ def get_artist_graph(artist: str, limit: int = 20):
     if result is None:
         raise HTTPException(status_code=404, detail=f"Künstler nicht gefunden: {artist}")
     return result
+
+
+@app.post("/api/graph/playlist")
+def graph_playlist(req: GraphPlaylistRequest):
+    """Turn a set of artists from the graph into a playlist preview.
+
+    Same shape as /playlists/preview so the Playlists tab can take it over
+    and save it, rather than this being a dead end in the graph view.
+    """
+    tracks = graph.tracks_for_artists(app.state.graph, [a.lower() for a in req.artists])
+    if not tracks:
+        raise HTTPException(status_code=404, detail="Keine Tracks für diese Künstler")
+
+    chosen = presets.cap_per_artist(
+        presets.dedupe_by_song(tracks), req.per_artist
+    )[:req.limit]
+    now = time.time()
+    return {"tracks": [
+        {
+            "path": t["path"], "bpm": t["bpm"], "key": t["key"],
+            "danceability": t["danceability"], "mood_happy": t["mood_happy"],
+            "mood_aggressive": t["mood_aggressive"], "mood_relaxed": t["mood_relaxed"],
+            "mood_party": t["mood_party"], "percentile": t.get("percentile"),
+            "first_seen": t.get("first_seen"),
+            "is_new": presets.is_fresh(t, now, 0),
+        }
+        for t in chosen
+    ]}
 
 
 @app.get("/api/tracks/recent")

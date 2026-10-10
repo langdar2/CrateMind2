@@ -45,9 +45,24 @@ export default function Playlists() {
   const [renderers, setRenderers] = useState([]);
   const [error, setError] = useState(null);
   const seedQueryRef = useRef("");
+  const skipAutoPreview = useRef(false);
 
   useEffect(() => {
     getStats().then((s) => setHasTracks((s.status_counts.ok || 0) > 0));
+    // A playlist handed over from the graph view. Read once and cleared, so
+    // a later visit to this tab does not resurrect an old selection.
+    const handover = sessionStorage.getItem("cratemind:graphPreview");
+    if (handover) {
+      sessionStorage.removeItem("cratemind:graphPreview");
+      try {
+        setPreview(JSON.parse(handover));
+        // Manual mode auto-previews on mount, which would overwrite what the
+        // graph just handed over; skip that one run.
+        skipAutoPreview.current = true;
+      } catch {
+        // Malformed handover is not worth bothering the user about.
+      }
+    }
   }, []);
 
   const moveTrack = (index, direction) => {
@@ -111,6 +126,10 @@ export default function Playlists() {
   // slider change with a short debounce; other modes keep the explicit button.
   useEffect(() => {
     if (mode !== "manual" || hasTracks !== true) return;
+    if (skipAutoPreview.current) {
+      skipAutoPreview.current = false;
+      return;
+    }
     const timer = setTimeout(
       () => runPreview({ mode, criteria: manualCriteria(), discovery: discovery / 100 }),
       300
