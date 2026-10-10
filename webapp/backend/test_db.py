@@ -77,10 +77,12 @@ def test_load_ok_tracks_joins_preferences_and_leaves_unscored_null():
     tracks = {t["path"]: t for t in db.load_ok_tracks(conn)}
 
     assert tracks["/music/a.mp3"]["score"] == 4.2
-    assert tracks["/music/a.mp3"]["song_key"] == "artist|title"
+    # song_key comes from the path now, not from this row: the import only
+    # covers a third of the library, so every track needs one regardless.
+    assert tracks["/music/a.mp3"]["song_key"] == db.song_key_of("/music/a.mp3")
+    assert tracks["/music/b.mp3"]["song_key"] == db.song_key_of("/music/b.mp3")
     # Never imported -> None, so it sorts out of the way instead of ranking as 0.
     assert tracks["/music/b.mp3"]["score"] is None
-    assert tracks["/music/b.mp3"]["song_key"] is None
     assert tracks["/music/b.mp3"]["percentile"] is None
 
 
@@ -167,6 +169,32 @@ def test_refreshing_replaces_the_description():
     db.save_description(conn, 3, "Alte Beschreibung")
     db.save_description(conn, 3, "Neue Beschreibung")
     assert db.load_description(conn, 3) == "Neue Beschreibung"
+
+
+def _key(title, artist="Metallica", album="Alb"):
+    return db.song_key_of(f"/music/{artist} - {album}/01. {artist} - {title}.flac")
+
+
+def test_song_key_collapses_versions_of_one_song():
+    """Live takes, remixes and remasters are one song for a playlist."""
+    plain = _key("Enter Sandman")
+    for variant in ["Enter Sandman (Live)", "Enter Sandman (Explicit)",
+                    "Enter Sandman [2024 Remaster]",
+                    "Enter Sandman (Live At The Masonic) (Explicit)"]:
+        assert _key(variant) == plain, variant
+
+
+def test_song_key_keeps_numbered_parts_apart():
+    """"Blakes Landgang (Pt. 1)" and "(Pt. 2)" are different songs."""
+    assert _key("Blakes Landgang (Pt. 1)") != _key("Blakes Landgang (Pt. 2)")
+    assert _key("Folge mir (Teil 1)") != _key("Folge mir (Teil 2)")
+    # ...and a part still collapses across its own versions.
+    assert _key("Blakes Landgang (Pt. 1) (Live)") == _key("Blakes Landgang (Pt. 1)")
+
+
+def test_song_key_keeps_covers_apart():
+    """Different artists playing the same title are different recordings."""
+    assert _key("Enter Sandman", artist="Weezer") != _key("Enter Sandman")
 
 
 def test_display_parses_the_usual_layout():
@@ -507,6 +535,9 @@ if __name__ == "__main__":
     test_description_round_trips_alongside_the_recipe()
     test_description_works_without_a_recipe()
     test_refreshing_replaces_the_description()
+    test_song_key_collapses_versions_of_one_song()
+    test_song_key_keeps_numbered_parts_apart()
+    test_song_key_keeps_covers_apart()
     test_display_parses_the_usual_layout()
     test_display_prefers_the_filename_artist_on_compilations()
     test_display_handles_track_number_variants()

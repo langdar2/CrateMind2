@@ -43,6 +43,32 @@ def artist_of(path: str) -> str:
 # "01. ", "1 - ", "406. " - the track number some filenames carry up front.
 _TRACK_NUMBER = re.compile(r"^\s*\d+\s*[.\-)]?\s+")
 
+# Bracketed qualifiers: "(Live)", "(Radio Edit)", "[2024 Remaster]".
+_QUALIFIER = re.compile(r"[(\[][^)\]]*[)\]]")
+# ...except the ones naming a numbered part. "Blakes Landgang (Pt. 1)" and
+# "(Pt. 2)" are different songs; "(Live)" and "(Radio Edit)" are not.
+_NUMBERED_PART = re.compile(r"\b(?:pt|part|teil|satz|movement|no|nr|vol)\b\.?\s*(\d+)", re.I)
+_NOISE = re.compile(r"[^a-z0-9]+")
+
+
+def song_key_of(path: str) -> str:
+    """Identity of a song, ignoring which version or release it came from.
+
+    A library holds the same song many times over - the album cut, a live
+    take, three remixes, a remaster. For a playlist they are one song, and
+    listing several is just repetition: one preview came back with four
+    versions of the same Mariah Carey track.
+
+    Derived from the path rather than the Apple import's song_key, which
+    only covers a third of the library and keeps remix titles apart anyway.
+    """
+    display = display_of(path)
+    title = display["title"]
+    # Keep "pt. 2" so numbered parts stay distinct, drop every other bracket.
+    parts = "".join(f"pt{n}" for n in _NUMBERED_PART.findall(title))
+    base = _NOISE.sub("", _QUALIFIER.sub(" ", title).lower())
+    return f"{_NOISE.sub('', display['artist'].lower())}|{base}{parts}"
+
 
 def display_of(path: str) -> dict:
     """Artist, album and title for display, parsed from the path.
@@ -455,7 +481,7 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
 
     tracks = []
     for (path, bpm, key, happy, aggressive, relaxed, party, dance, emb_blob,
-         _apple_plays, _apple_skips, _apple_score, song_key, first_seen) in rows:
+         _apple_plays, _apple_skips, _apple_score, _apple_song_key, first_seen) in rows:
         rating = ratings.get(path, 0)
         score = scores.get(path)  # None while nothing has ever played it
         percentile = percentiles.get(path)
@@ -477,7 +503,10 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
             # kept so clearing a rating can restore the play-based rank
             "played_percentile": percentile,
             "rating": rating,
-            "song_key": song_key,
+            # Derived from the path, not from the Apple import's song_key:
+            # that covers a third of the library and keeps remix titles
+            # apart, so most duplicate versions slipped through de-duping.
+            "song_key": song_key_of(path),
             # When the scanner first saw the file; None for rows written
             # before the column existed and never rescanned since.
             "first_seen": first_seen,
