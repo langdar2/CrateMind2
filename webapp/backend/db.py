@@ -305,7 +305,12 @@ def load_recipe(conn: sqlite3.Connection, playlist_id: int):
     row = conn.execute(
         "SELECT recipe FROM playlist_recipes WHERE playlist_id = ?", (playlist_id,)
     ).fetchone()
-    return json.loads(row[0]) if row else None
+    # A row can exist with an empty "{}" recipe: save_description creates one
+    # for playlists built without a recipe. Every caller asks "can this be
+    # rebuilt?", and for that an empty recipe is the same as none - treating
+    # it otherwise let such a playlist be scheduled and then fail every run.
+    recipe = json.loads(row[0]) if row else None
+    return recipe or None
 
 
 def save_description(conn: sqlite3.Connection, playlist_id: int, description: str) -> None:

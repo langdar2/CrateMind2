@@ -83,10 +83,12 @@ export default function Graph() {
     setError(null);
     setBuilding(true);
     try {
-      const { tracks } = await getGraphPlaylist(data.nodes.map((n) => n.id));
+      const { tracks, recipe } = await getGraphPlaylist(data.nodes.map((n) => n.id));
       // Hand the preview to the Playlists tab, which already knows how to
       // reorder, name and save one - rather than rebuilding all that here.
-      sessionStorage.setItem("cratemind:graphPreview", JSON.stringify(tracks));
+      // The recipe travels along, so the saved playlist can be refreshed
+      // and scheduled like any other instead of being a one-off.
+      sessionStorage.setItem("cratemind:graphPreview", JSON.stringify({ tracks, recipe }));
       navigate("/playlists");
     } catch (e) {
       setError(e.message);

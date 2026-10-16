@@ -272,6 +272,47 @@ def test_preview_carries_artist_album_title_for_display():
     assert all(display.values()), display
 
 
+def test_a_playlist_with_only_a_description_cannot_be_scheduled():
+    """The 14.10. failure: a graph playlist got a "{}" recipe via its
+    description, was accepted for scheduling and then failed every run."""
+    app_module.db.save_description(app_module.app.state.conn, 81, "nur Text")
+    with TestClient(app_module.app) as client:
+        response = client.put("/api/schedules/81",
+                              json={"name": "X", "weekday": 3, "hour": 18, "minute": 0})
+    assert response.status_code == 400
+
+
+def test_graph_playlist_returns_a_recipe_that_refresh_can_rebuild():
+    import numpy as np
+    conn = app_module.app.state.conn
+    for i in range(4):
+        p = f"/music/Band - Alb/0{i}. Band - Lied {i}.mp3"
+        analysis_db.upsert_track(conn, p, mtime=1.0, size=100, status="ok")
+        analysis_db.upsert_features(conn, p, {
+            "bpm": 120.0, "key": "C major", "mood_happy": 0.5, "mood_aggressive": 0.5,
+            "mood_relaxed": 0.5, "mood_party": 0.5, "danceability": 0.5,
+            "embedding": np.ones(200, dtype=np.float32)})
+    with TestClient(app_module.app) as client:
+        app_module.reload_library()
+        body = client.post("/api/graph/playlist", json={"artists": ["band"], "limit": 5}).json()
+        assert body["recipe"]["mode"] == "graph"
+        assert body["recipe"]["artists"] == ["band"]
+        assert body["tracks"]
+
+        app_module.db.save_recipe(conn, 82, body["recipe"])
+        with patch.object(vuio_client, "replace_playlist_tracks", return_value=3) as replace, \
+             patch.object(omlx_client, "suggest_playlist_description", return_value=None):
+            response = client.post("/api/playlists/82/refresh")
+    assert response.status_code == 200
+    assert all("/Band - Alb/" in p for p in replace.call_args[0][1])
+
+    # The fixture DB is shared across this file and later tests expect one
+    # track in it, so take the extra ones back out.
+    for i in range(4):
+        analysis_db.delete_track(conn, f"/music/Band - Alb/0{i}. Band - Lied {i}.mp3")
+    app_module.reload_library()
+
+
 def test_graph_playlist_returns_preview_shaped_tracks():
     """The Playlists tab takes this over verbatim, so the shape must match."""
     with TestClient(app_module.app) as client:
@@ -594,6 +635,8 @@ if __name__ == "__main__":
     test_create_survives_the_model_being_down()
     test_refresh_rewrites_the_description_for_the_new_tracks()
     test_preview_carries_artist_album_title_for_display()
+    test_a_playlist_with_only_a_description_cannot_be_scheduled()
+    test_graph_playlist_returns_a_recipe_that_refresh_can_rebuild()
     test_graph_playlist_returns_preview_shaped_tracks()
     test_graph_playlist_404s_for_unknown_artists()
     test_suggest_name_passes_the_previewed_tracks_to_the_model()

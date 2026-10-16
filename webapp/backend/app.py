@@ -167,6 +167,9 @@ class PreviewRequest(BaseModel):
     seed_path: Optional[str] = None
     mood_prompt: Optional[str] = None
     criteria: Optional[dict] = None
+    # Graph mode: the artists of a neighbourhood, and how many tracks each.
+    artists: Optional[list] = None
+    per_artist: int = 3
     # These defaults are the behaviour, not a UI preference - a caller reaching
     # for the API directly should get the same playlist the app would build.
     # Seed mode only: 0 ranks purely by sound, 1 purely by taste.
@@ -410,29 +413,15 @@ def get_artist_graph(artist: str, limit: int = 20):
 def graph_playlist(req: GraphPlaylistRequest):
     """Turn a set of artists from the graph into a playlist preview.
 
-    Same shape as /playlists/preview so the Playlists tab can take it over
-    and save it, rather than this being a dead end in the graph view.
+    Goes through the same graph-mode recipe that a saved playlist stores, so
+    what the user previews is exactly what a later refresh rebuilds - and
+    returns that recipe, so the Playlists tab can save it with the playlist.
     """
-    tracks = graph.tracks_for_artists(app.state.graph, [a.lower() for a in req.artists])
-    if not tracks:
-        raise HTTPException(status_code=404, detail="Keine Tracks für diese Künstler")
-
-    chosen = presets.cap_per_artist(
-        presets.dedupe_by_song(tracks), req.per_artist
-    )[:req.limit]
-    now = time.time()
-    return {"tracks": [
-        {
-            "path": t["path"], "bpm": t["bpm"], "key": t["key"],
-            "danceability": t["danceability"], "mood_happy": t["mood_happy"],
-            "mood_aggressive": t["mood_aggressive"], "mood_relaxed": t["mood_relaxed"],
-            "mood_party": t["mood_party"], "percentile": t.get("percentile"),
-            "display": t.get("display"),
-            "first_seen": t.get("first_seen"),
-            "is_new": presets.is_fresh(t, now, 0),
-        }
-        for t in chosen
-    ]}
+    recipe = PreviewRequest(mode="graph", artists=req.artists,
+                            per_artist=req.per_artist, limit=req.limit)
+    response = preview_playlist(recipe)
+    response["recipe"] = recipe.model_dump()
+    return response
 
 
 @app.get("/api/tracks/recent")
@@ -489,6 +478,19 @@ def select_tracks(req: PreviewRequest) -> list:
                                          taste_weight=req.taste_weight)
         matches = presets.cap_per_artist(presets.dedupe_by_song(similar))[:req.limit]
         fitting = similar  # already ranked by closeness to the seed
+    elif req.mode == "graph":
+        # A playlist built from the artist graph. Stored as a recipe like any
+        # other, so a scheduled refresh draws new tracks by the same artists.
+        if not req.artists:
+            raise HTTPException(status_code=400, detail="artists fehlt")
+        wanted = [a.lower() for a in req.artists]
+        allowed = {t["path"] for t in tracks}  # thumbs-down already removed
+        picked = [t for t in graph.pick_for_artists(app.state.graph, wanted, req.per_artist)
+                  if t["path"] in allowed]
+        if not picked:
+            raise HTTPException(status_code=404, detail="Keine Tracks für diese Künstler")
+        matches = presets.cap_per_artist(presets.dedupe_by_song(picked), req.per_artist)[:req.limit]
+        fitting = graph.tracks_for_artists(app.state.graph, wanted)
     elif req.mode == "smart":
         if not req.mood_prompt:
             raise HTTPException(status_code=400, detail="mood_prompt fehlt")

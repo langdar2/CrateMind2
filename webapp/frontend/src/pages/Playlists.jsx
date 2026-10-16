@@ -57,7 +57,11 @@ export default function Playlists() {
     if (handover) {
       sessionStorage.removeItem("cratemind:graphPreview");
       try {
-        setPreview(JSON.parse(handover));
+        const parsed = JSON.parse(handover);
+        // Older handovers were a bare track list, without a recipe.
+        const { tracks, recipe } = Array.isArray(parsed) ? { tracks: parsed } : parsed;
+        setPreview(tracks);
+        if (recipe) setLastRecipe(recipe);
         // Manual mode auto-previews on mount, which would overwrite what the
         // graph just handed over; skip that one run.
         skipAutoPreview.current = true;

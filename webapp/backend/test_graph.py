@@ -87,6 +87,28 @@ def test_tracks_for_artists_ignores_names_not_in_the_graph():
     assert graph.tracks_for_artists(index, ["nobody", "one hit wonder"]) == []
 
 
+def test_pick_for_artists_varies_between_runs():
+    """A weekly refresh of the same artists must not return the same tracks."""
+    library = [_track("broilers", [1.0, 0.0, 0.0], 50) for _ in range(20)]
+    for i, t in enumerate(library):
+        t["path"] = f"/music/Broilers - A/{i:02d}. Broilers - Song {i}.mp3"
+    index = graph.build_index(library)
+    import random as _r
+    runs = {tuple(t["path"] for t in graph.pick_for_artists(index, ["broilers"], 3, _r.Random(s)))
+            for s in range(6)}
+    assert len(runs) > 1
+
+
+def test_pick_for_artists_interleaves_artists():
+    index = graph.build_index(_library())
+    picked = graph.pick_for_artists(index, ["broilers", "feine sahne"], 2)
+    assert {picked[0]["artist"], picked[1]["artist"]} == {"broilers", "feine sahne"}
+
+
+def test_pick_for_artists_skips_unknown_artists():
+    assert graph.pick_for_artists(graph.build_index(_library()), ["nobody"], 3) == []
+
+
 def test_unknown_artist_returns_none():
     assert graph.neighbourhood(graph.build_index(_library()), "nobody") is None
 
@@ -105,6 +127,9 @@ if __name__ == "__main__":
     test_tracks_for_artists_collects_and_orders_by_taste()
     test_tracks_for_artists_keeps_unscored_but_sorts_them_last()
     test_tracks_for_artists_ignores_names_not_in_the_graph()
+    test_pick_for_artists_varies_between_runs()
+    test_pick_for_artists_interleaves_artists()
+    test_pick_for_artists_skips_unknown_artists()
     test_unknown_artist_returns_none()
     test_empty_library_does_not_crash()
     print("All graph tests passed.")

@@ -140,6 +140,16 @@ def test_fetch_local_plays_is_most_recent_first():
     assert [p["path"] for p in db.fetch_local_plays(conn)] == ["/music/b.mp3", "/music/a.mp3"]
 
 
+def test_an_empty_recipe_counts_as_no_recipe():
+    """save_description leaves a "{}" recipe behind for recipe-less playlists;
+    reading that as a real recipe let one be scheduled and fail every run."""
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    db.save_description(conn, 6, "Beschreibung ohne Rezept")
+    assert db.load_recipe(conn, 6) is None
+    assert db.load_description(conn, 6) == "Beschreibung ohne Rezept"
+
+
 def test_description_round_trips_alongside_the_recipe():
     path = _make_test_db()
     conn = db.get_connection(path)
@@ -532,6 +542,7 @@ if __name__ == "__main__":
     test_load_ok_tracks_returns_only_ok_with_embedding()
     test_load_ok_tracks_joins_preferences_and_leaves_unscored_null()
     test_percentile_ranks_scores_among_scored_tracks_only()
+    test_an_empty_recipe_counts_as_no_recipe()
     test_description_round_trips_alongside_the_recipe()
     test_description_works_without_a_recipe()
     test_refreshing_replaces_the_description()

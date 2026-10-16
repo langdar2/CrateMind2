@@ -10,6 +10,8 @@ similarity between two artists' mean embeddings, which is all the library
 knows. There is no collaboration data.
 """
 
+import random
+
 import numpy as np
 
 # An artist's centroid is meaningless if it averages two tracks, and the long
@@ -26,6 +28,11 @@ MIN_SIMILARITY = 0.6
 # edges survived, drawing a hairball. Keeping each node's strongest few edges
 # shows who sits closest to whom instead.
 EDGES_PER_NODE = 3
+
+# How much wider than the final pick an artist's candidate pool is, when a
+# playlist is drawn from a graph neighbourhood. Wide enough to vary week to
+# week, narrow enough that it stays among the tracks the listener likes.
+POOL_FACTOR = 4
 
 
 def build_index(tracks: list) -> dict:
@@ -122,6 +129,30 @@ def tracks_for_artists(index: dict, artists: list) -> list:
         reverse=True,
     )
     return collected
+
+
+def pick_for_artists(index: dict, artists: list, per_artist: int, rng=random) -> list:
+    """A per-artist sample for a playlist built from a graph neighbourhood.
+
+    Drawn at random from each artist's better-liked tracks rather than always
+    taking the top few: a scheduled refresh of the same artists should bring
+    different songs each week, not the identical three per artist. The pool
+    is a few times wider than the pick, so taste still steers what comes up.
+    Artists are interleaved so no one of them clusters at the top.
+    """
+    per_artist_tracks = []
+    for artist in artists:
+        if artist not in index["tracks"]:
+            continue
+        ranked = tracks_for_artists(index, [artist])
+        pool = ranked[:max(per_artist * POOL_FACTOR, per_artist)]
+        per_artist_tracks.append(rng.sample(pool, min(per_artist * 2, len(pool))))
+    # Round-robin across artists; extras beyond per_artist are kept so that
+    # de-duplicating versions downstream does not leave an artist short.
+    out = []
+    for round_ in range(max((len(t) for t in per_artist_tracks), default=0)):
+        out.extend(t[round_] for t in per_artist_tracks if round_ < len(t))
+    return out
 
 
 def list_artists(index: dict) -> list:
