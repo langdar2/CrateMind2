@@ -272,6 +272,30 @@ def test_preview_carries_artist_album_title_for_display():
     assert all(display.values()), display
 
 
+def test_frontend_is_revalidated_but_hashed_assets_are_cached():
+    """index.html must not be reused blindly after a deploy; the content-hashed
+    bundles it points at can be kept for good."""
+    import tempfile
+    from fastapi import FastAPI
+    root = Path(tempfile.mkdtemp())
+    (root / "assets").mkdir()
+    (root / "index.html").write_text("<html></html>")
+    (root / "assets" / "index-abc123.js").write_text("console.log(1)")
+    site = FastAPI()
+    site.mount("/", app_module.FrontendFiles(directory=str(root), html=True))
+
+    with TestClient(site) as client:
+        page = client.get("/")
+        bundle = client.get("/assets/index-abc123.js")
+        missing = client.get("/assets/nope.js")
+    assert page.headers["cache-control"] == "no-cache"
+    assert "immutable" in bundle.headers["cache-control"]
+    assert "max-age=31536000" in bundle.headers["cache-control"]
+    # An error response must not be pinned in a cache for a year.
+    assert missing.status_code == 404
+    assert "cache-control" not in missing.headers
+
+
 def test_a_playlist_with_only_a_description_cannot_be_scheduled():
     """The 14.10. failure: a graph playlist got a "{}" recipe via its
     description, was accepted for scheduling and then failed every run."""

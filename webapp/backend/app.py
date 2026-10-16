@@ -666,6 +666,29 @@ def playback_status(renderer_id: Optional[str] = None):
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
+class FrontendFiles(StaticFiles):
+    """Static frontend with cache rules that survive a redeploy.
+
+    Without a Cache-Control header a browser may reuse index.html on its own
+    judgement, and with the old HTML it loads the old JavaScript bundle - a
+    deploy then looks like it did nothing. no-cache does not mean "never
+    store": the browser keeps the file but asks the server first, and the
+    ETag turns that into a cheap 304 when nothing changed.
+
+    Vite names its bundles by content hash, so those files can never change
+    under the same name and are safe to keep for a year.
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code in (200, 304):
+            immutable = path.startswith("assets/")
+            response.headers["Cache-Control"] = (
+                "public, max-age=31536000, immutable" if immutable else "no-cache"
+            )
+        return response
+
+
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(STATIC_DIR):
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    app.mount("/", FrontendFiles(directory=STATIC_DIR, html=True), name="static")
