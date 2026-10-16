@@ -63,7 +63,7 @@ alles andere weiter.
 
 ![Playlists](docs/images/playlists.jpg)
 
-Vier Modi:
+Fünf Modi:
 
 **Manuell** — Schieberegler für BPM, Stimmungen und Vorliebe. Kostenlos und
 ohne LLM, die Vorschau aktualisiert sich beim Schieben.
@@ -79,6 +79,9 @@ Der Regler *Klang ↔ Geschmack* mischt bei, wie sehr Vorlieben mitreden.
 eine Vorauswahl von 150 Kandidaten sortiert. Der einzige Modus, der Kosten
 verursacht.
 
+**Wunschliste** — eine Liste konkreter Titel, die auf jeden Fall drin sein
+sollen. Der Rest wird mit passenden Titeln aufgefüllt (siehe unten).
+
 Zwei Regler gelten modusübergreifend:
 
 - **Vorliebe** filtert nach Perzentil („Top 10%"). Achtung: Zwei Drittel der
@@ -91,6 +94,45 @@ Jede Playlist bekommt höchstens 5 Titel pro Künstler und keine doppelten
 Aufnahmen. Vor dem Speichern lassen sich Name und Beschreibung vom lokalen
 Modell vorschlagen oder von Hand eintragen.
 
+### Wunschliste
+
+![Wunschliste](docs/images/wishlist.jpg)
+
+Titel einfügen, einen pro Zeile. Verstanden werden:
+
+```
+Falco - Vienna Calling
+Die Ärzte – Schrei nach Liebe
+Nothing Else Matters by Metallica
+03. Udo Lindenberg - Cello
+Wonderwall
+```
+
+Tracknummern und Aufzählungszeichen aus kopierten Listen werden ignoriert,
+ebenso Groß- und Kleinschreibung, Akzente und Klammerzusätze wie „(Live)" oder
+„(Remastered)".
+
+Die gefundenen Titel stehen am Anfang der Playlist, in der angegebenen
+Reihenfolge. Danach wird auf 50 Tracks aufgefüllt (per Regler 10 bis 100), und
+zwar mit Titeln, die am ähnlichsten klingen wie die Wunschliste *als Ganzes* —
+nicht wie ein einzelner Song daraus. Es gelten die üblichen Regeln: höchstens
+5 Titel pro Künstler, keine doppelten Versionen.
+
+Darüber steht, wie viele Wunschtitel gefunden wurden, und darunter die
+fehlenden, rot markiert und mit *Liste kopieren* in die Zwischenablage zu
+holen. Praktisch als Einkaufsliste.
+
+Gut zu wissen:
+
+- Gibt es einen Song in mehreren Fassungen, gewinnt die Albumfassung vor
+  Live-, Remix-, Demo- oder Akustikversionen. Ein Remaster zählt als
+  Albumfassung.
+- Ein Titel **ohne Künstler** trifft nur, wenn genau ein Künstler in der
+  Bibliothek einen Song dieses Namens hat. „Wonderwall" klappt, „Intro" wird
+  als fehlend gemeldet, statt zu raten.
+- Der Titel muss bis auf Klammerzusätze stimmen. Ein Tippfehler ergibt
+  „fehlt", auch wenn der Song vorhanden ist.
+
 ## Automatische Mixe
 
 ![Zeitpläne](docs/images/schedules.jpg)
@@ -100,8 +142,18 @@ wöchentlich daraus neu befüllt werden — gleiche Playlist-ID, neue Tracks, ne
 Beschreibung. Wochentag und Uhrzeit sind hier einstellbar, dazu Pausieren und
 sofortiges Neubefüllen.
 
-Weil die Entdeckungsplätze bei jedem Lauf neu gezogen werden, enthält ein
-wöchentlicher Mix jedes Mal anderes unbekanntes Material.
+Das geht mit jeder Playlist, die in CrateMind angelegt wurde, egal aus
+welchem Modus. Was sich pro Lauf ändert, hängt vom Modus ab:
+
+- **Manuell, Prompt, Seed:** Die Entdeckungsplätze werden neu gezogen, ein
+  wöchentlicher Mix enthält also jedes Mal anderes unbekanntes Material.
+- **Klang-Graph:** Pro Künstler wird aus den besser bewerteten Titeln neu
+  gelost, nicht immer dieselben drei genommen.
+- **Wunschliste:** Die Wunschtitel bleiben immer drin, nur die Auffüller
+  wechseln.
+
+Playlists, die außerhalb von CrateMind entstanden sind, haben kein Rezept und
+werden hier nicht zum Einplanen angeboten.
 
 ## Klang-Graph
 
@@ -113,7 +165,8 @@ springt weiter zur Nachbarschaft des angeklickten Künstlers.
 
 Die Kanten bedeuten *klingt ähnlich* — sie stammen aus den Essentia-Embeddings,
 nicht aus Metadaten. Mit *Diese Künstler als Playlist* wandert die sichtbare
-Auswahl in den Playlists-Tab.
+Auswahl in den Playlists-Tab — und lässt sich dort speichern und wöchentlich
+neu befüllen wie jede andere Playlist.
 
 ## Abspielen
 
