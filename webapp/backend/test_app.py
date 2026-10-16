@@ -313,6 +313,33 @@ def test_graph_playlist_returns_a_recipe_that_refresh_can_rebuild():
     app_module.reload_library()
 
 
+def test_wishlist_reports_missing_songs_and_returns_a_recipe():
+    with TestClient(app_module.app) as client:
+        body = client.post("/api/playlists/wishlist", json={
+            "text": "Gibt Es - Nicht\n\n", "limit": 5}).json()
+    assert body["missing"] == ["Gibt Es - Nicht"]
+    assert body["found"] == 0 and body["wished"] == 1
+    assert body["recipe"]["mode"] == "wishlist"
+
+
+def test_wishlist_rejects_an_empty_list():
+    with TestClient(app_module.app) as client:
+        assert client.post("/api/playlists/wishlist", json={"text": "  \n"}).status_code == 400
+
+
+def test_wishlist_recipe_rebuilds_on_refresh():
+    """A saved wishlist playlist must refresh like any other."""
+    found_path = app_module.app.state.tracks[0]["path"]
+    d = app_module.app.state.tracks[0]["display"]
+    recipe = {"mode": "wishlist", "wishes": [f"{d['artist']} - {d['title']}"], "limit": 5}
+    app_module.db.save_recipe(app_module.app.state.conn, 91, recipe)
+    with patch.object(vuio_client, "replace_playlist_tracks", return_value=1) as replace, \
+         patch.object(omlx_client, "suggest_playlist_description", return_value=None):
+        with TestClient(app_module.app) as client:
+            assert client.post("/api/playlists/91/refresh").status_code == 200
+    assert replace.call_args[0][1][0] == found_path
+
+
 def test_graph_playlist_returns_preview_shaped_tracks():
     """The Playlists tab takes this over verbatim, so the shape must match."""
     with TestClient(app_module.app) as client:
@@ -637,6 +664,9 @@ if __name__ == "__main__":
     test_preview_carries_artist_album_title_for_display()
     test_a_playlist_with_only_a_description_cannot_be_scheduled()
     test_graph_playlist_returns_a_recipe_that_refresh_can_rebuild()
+    test_wishlist_reports_missing_songs_and_returns_a_recipe()
+    test_wishlist_rejects_an_empty_list()
+    test_wishlist_recipe_rebuilds_on_refresh()
     test_graph_playlist_returns_preview_shaped_tracks()
     test_graph_playlist_404s_for_unknown_artists()
     test_suggest_name_passes_the_previewed_tracks_to_the_model()

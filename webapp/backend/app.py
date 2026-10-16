@@ -20,6 +20,7 @@ import presets
 import similarity
 import typesafe_client
 import vuio_client
+import wishlist
 
 DB_PATH = os.environ.get("DB_PATH", "/data/library.db")
 # ponytail: caps Jev API calls (and cost) per smart preview; raise if the
@@ -170,6 +171,8 @@ class PreviewRequest(BaseModel):
     # Graph mode: the artists of a neighbourhood, and how many tracks each.
     artists: Optional[list] = None
     per_artist: int = 3
+    # Wishlist mode: "Artist - Title" lines the playlist must contain.
+    wishes: Optional[list] = None
     # These defaults are the behaviour, not a UI preference - a caller reaching
     # for the API directly should get the same playlist the app would build.
     # Seed mode only: 0 ranks purely by sound, 1 purely by taste.
@@ -215,6 +218,12 @@ class GraphPlaylistRequest(BaseModel):
     # artists, so five each would let one of them dominate.
     per_artist: int = 3
     limit: int = 30
+
+
+class WishlistRequest(BaseModel):
+    # One song per line, "Artist - Title"; pasted lists are taken as they come.
+    text: str
+    limit: int = 50
 
 
 class SuggestNameRequest(BaseModel):
@@ -491,6 +500,12 @@ def select_tracks(req: PreviewRequest) -> list:
             raise HTTPException(status_code=404, detail="Keine Tracks für diese Künstler")
         matches = presets.cap_per_artist(presets.dedupe_by_song(picked), req.per_artist)[:req.limit]
         fitting = graph.tracks_for_artists(app.state.graph, wanted)
+    elif req.mode == "wishlist":
+        # Songs asked for by name go in as they are; no fresh-music quota or
+        # discovery slots may push one of them out of the list.
+        if not req.wishes:
+            raise HTTPException(status_code=400, detail="wishes fehlt")
+        return wishlist.build(req.wishes, tracks, req.limit)["tracks"]
     elif req.mode == "smart":
         if not req.mood_prompt:
             raise HTTPException(status_code=400, detail="mood_prompt fehlt")
@@ -523,24 +538,48 @@ def select_tracks(req: PreviewRequest) -> list:
                                   req.fresh_days, time.time())
 
 
+def serialize_track(t: dict, now: float, fresh_days: float) -> dict:
+    return {
+        "path": t["path"], "bpm": t["bpm"], "key": t["key"],
+        "danceability": t["danceability"], "mood_happy": t["mood_happy"],
+        "mood_aggressive": t["mood_aggressive"], "mood_relaxed": t["mood_relaxed"],
+        "mood_party": t["mood_party"], "percentile": t.get("percentile"),
+        "display": t.get("display"),
+        # When the library first saw the file, plus the verdict against the
+        # request's own window, so a client can badge a track as new without
+        # repeating the fresh_days arithmetic.
+        "first_seen": t.get("first_seen"),
+        "is_new": presets.is_fresh(t, now, fresh_days),
+    }
+
+
 @app.post("/api/playlists/preview")
 def preview_playlist(req: PreviewRequest):
     now = time.time()
-    return {"tracks": [
-        {
-            "path": t["path"], "bpm": t["bpm"], "key": t["key"],
-            "danceability": t["danceability"], "mood_happy": t["mood_happy"],
-            "mood_aggressive": t["mood_aggressive"], "mood_relaxed": t["mood_relaxed"],
-            "mood_party": t["mood_party"], "percentile": t.get("percentile"),
-            "display": t.get("display"),
-            # When the library first saw the file, plus the verdict against
-            # this request's own window, so a client can badge a track as new
-            # without repeating the fresh_days arithmetic.
-            "first_seen": t.get("first_seen"),
-            "is_new": presets.is_fresh(t, now, req.fresh_days),
-        }
-        for t in select_tracks(req)
-    ]}
+    return {"tracks": [serialize_track(t, now, req.fresh_days) for t in select_tracks(req)]}
+
+
+@app.post("/api/playlists/wishlist")
+def wishlist_preview(req: WishlistRequest):
+    """Preview a playlist built around songs asked for by name.
+
+    Besides the tracks, reports which wished-for songs the library does not
+    have, and returns the recipe so the playlist can be saved, refreshed and
+    scheduled like any other.
+    """
+    lines = [line for line in req.text.splitlines() if line.strip()]
+    if not lines:
+        raise HTTPException(status_code=400, detail="Keine Titel angegeben")
+    tracks = [t for t in app.state.tracks if t.get("rating", 0) >= 0]
+    result = wishlist.build(lines, tracks, req.limit)
+    recipe = PreviewRequest(mode="wishlist", wishes=lines, limit=req.limit)
+    return {
+        "tracks": [serialize_track(t, time.time(), recipe.fresh_days) for t in result["tracks"]],
+        "found": result["found"],
+        "wished": result["wished"],
+        "missing": result["missing"],
+        "recipe": recipe.model_dump(),
+    }
 
 
 @app.post("/api/playlists/suggest-name")

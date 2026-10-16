@@ -7,6 +7,7 @@ import {
   castPlaylist,
   searchTracks,
   suggestPlaylistName,
+  previewWishlist,
 } from "../api.js";
 import TrackLabel from "../components/TrackLabel.jsx";
 
@@ -15,6 +16,7 @@ const MODES = [
   { id: "prompt", label: "Prompt" },
   { id: "seed", label: "Seed-Track" },
   { id: "smart", label: "Smart (Vibe)" },
+  { id: "wishlist", label: "Wunschliste" },
 ];
 
 const MOOD_FIELDS = [
@@ -42,6 +44,9 @@ export default function Playlists() {
   const [playlistName, setPlaylistName] = useState("");
   const [naming, setNaming] = useState(false);
   const [description, setDescription] = useState("");
+  const [wishText, setWishText] = useState("");
+  const [wishLimit, setWishLimit] = useState(50);
+  const [wishResult, setWishResult] = useState(null);
   const [playlistId, setPlaylistId] = useState(null);
   const [lastRecipe, setLastRecipe] = useState(null);
   const [renderers, setRenderers] = useState([]);
@@ -107,7 +112,20 @@ export default function Playlists() {
     return criteria;
   };
 
+  const runWishlist = async () => {
+    setError(null);
+    try {
+      const result = await previewWishlist(wishText, wishLimit);
+      setPreview(result.tracks);
+      setLastRecipe(result.recipe);
+      setWishResult({ found: result.found, wished: result.wished, missing: result.missing });
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
   const runPreview = async (body) => {
+    if (!body && mode === "wishlist") return runWishlist();
     setError(null);
     const recipe =
       body ||
@@ -290,6 +308,28 @@ export default function Playlists() {
           </div>
         )}
 
+        {mode === "wishlist" && (
+          <div style={{ marginTop: "12px" }}>
+            <textarea
+              className="wish-input"
+              rows={8}
+              placeholder={"Ein Titel pro Zeile, z.B.\nFalco - Vienna Calling\nDie Ärzte - Schrei nach Liebe\nWonderwall"}
+              value={wishText}
+              onChange={(e) => setWishText(e.target.value)}
+            />
+            <div className="slider-row">
+              <span className="label">Auffüllen auf</span>
+              <input
+                type="range" min="10" max="100" step="5"
+                value={wishLimit}
+                onChange={(e) => setWishLimit(+e.target.value)}
+                style={{ gridColumn: "2 / 4" }}
+              />
+              <span className="slider-value">{wishLimit} Tracks</span>
+            </div>
+          </div>
+        )}
+
         {mode === "prompt" && (
           <input
             type="text"
@@ -358,6 +398,34 @@ export default function Playlists() {
 
         {mode !== "manual" && <button onClick={() => runPreview()}>Vorschau erzeugen</button>}
       </div>
+
+      {mode === "wishlist" && wishResult && (
+        <div className="tile">
+          <h3>
+            Wunschliste: {wishResult.found} von {wishResult.wished} gefunden
+          </h3>
+          {wishResult.missing.length === 0 ? (
+            <p>Alle Wunschtitel sind in der Bibliothek.</p>
+          ) : (
+            <>
+              <p className="playlist-description">
+                Nicht in der Bibliothek ({wishResult.missing.length}) – die Playlist
+                wurde stattdessen mit ähnlich klingenden Titeln aufgefüllt:
+              </p>
+              <ul className="missing-list">
+                {wishResult.missing.map((line) => (
+                  <li key={line} className="card-row"><span className="path">{line}</span></li>
+                ))}
+              </ul>
+              <button
+                onClick={() => navigator.clipboard.writeText(wishResult.missing.join("\n"))}
+              >
+                Liste kopieren
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {preview.length > 0 && (
         <div className="tile">

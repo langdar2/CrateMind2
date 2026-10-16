@@ -24,6 +24,12 @@ export const searchTracks = (q) => request(`/tracks?q=${encodeURIComponent(q)}&l
 export const getFailedTracks = (q, limit, offset) =>
   request(`/tracks/failed?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`);
 export const retryFailedTracks = () => request("/tracks/retry-failed", { method: "POST" });
+export const previewWishlist = (text, limit = 50) =>
+  request("/playlists/wishlist", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, limit }),
+  });
 export const previewPlaylist = (body) =>
   request("/playlists/preview", {
     method: "POST",

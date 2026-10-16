@@ -446,6 +446,23 @@ input[type="range"]:disabled {
   pointer-events: none;
 }
 
+.wish-input {
+  width: 100%;
+  background: var(--lcars-black);
+  border: 2px solid var(--lcars-periwinkle);
+  border-radius: 16px;
+  color: var(--text-primary);
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+  margin-bottom: 8px;
+}
+
+.missing-list .card-row {
+  border-left-color: var(--lcars-red);
+}
+
 .track-title {
   display: block;
   color: var(--text-primary);

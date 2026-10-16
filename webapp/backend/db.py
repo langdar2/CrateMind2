@@ -75,11 +75,45 @@ def song_key_of(path: str) -> str:
     only covers a third of the library and keeps remix titles apart anyway.
     """
     display = display_of(path)
-    title = display["title"]
+    return song_key_for(display["artist"], display["title"])
+
+
+def _fold(text: str) -> str:
+    """Lower-case ASCII skeleton of a name: "Böhse" and "Bohse" both -> "bohse".
+
+    Paths from macOS arrive decomposed and typed text composed; stripping the
+    accents after decomposing makes both spell the same, which plain
+    lower-casing did not ("bhseonkelz" vs "bohseonkelz").
+    """
+    decomposed = unicodedata.normalize("NFKD", text.replace("ß", "ss"))
+    plain = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return _NOISE.sub("", plain.lower())
+
+
+def song_key_for(artist: str, title: str) -> str:
+    """Song identity from an artist and a title, wherever they came from."""
     # Keep "pt. 2" so numbered parts stay distinct, drop every other bracket.
     parts = "".join(f"pt{n}" for n in _NUMBERED_PART.findall(title))
-    base = _NOISE.sub("", _QUALIFIER.sub(" ", title).lower())
-    return f"{_NOISE.sub('', display['artist'].lower())}|{base}{parts}"
+    return f"{_fold(artist)}|{_fold(_QUALIFIER.sub(' ', title))}{parts}"
+
+
+def parse_wish(line: str) -> dict:
+    """One line of a wish list, as "Artist - Title".
+
+    Also takes "Title by Artist" and a bare title, since a pasted list is
+    rarely consistent. Returns None for blank lines.
+    """
+    line = _TRACK_NUMBER.sub("", line.strip().strip("-•*").strip())
+    if not line:
+        return None
+    for sep in (" - ", " – ", " — "):
+        if sep in line:
+            artist, title = line.split(sep, 1)
+            return {"artist": artist.strip(), "title": title.strip(), "line": line}
+    if " by " in line.lower():
+        idx = line.lower().rindex(" by ")
+        return {"artist": line[idx + 4:].strip(), "title": line[:idx].strip(), "line": line}
+    return {"artist": "", "title": line, "line": line}
 
 
 def display_of(path: str) -> dict:
