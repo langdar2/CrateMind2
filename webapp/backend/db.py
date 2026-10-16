@@ -90,11 +90,23 @@ def _fold(text: str) -> str:
     return _NOISE.sub("", plain.lower())
 
 
+def _fold_artist(artist: str) -> str:
+    """_fold plus a dropped leading "The": "The Goo Goo Dolls" is "Goo Goo Dolls".
+
+    Whether the folder carries the article is a coin toss and a typed wish
+    list rarely matches it - 137 artists here start with "The". Only the
+    artist is affected: a title like "The Trooper" keeps its article. If
+    nothing is left after dropping it ("The The"), the full name stays.
+    """
+    name = re.sub(r"^\s*the\s+", "", artist, flags=re.I)
+    return _fold(name) or _fold(artist)
+
+
 def song_key_for(artist: str, title: str) -> str:
     """Song identity from an artist and a title, wherever they came from."""
     # Keep "pt. 2" so numbered parts stay distinct, drop every other bracket.
     parts = "".join(f"pt{n}" for n in _NUMBERED_PART.findall(title))
-    return f"{_fold(artist)}|{_fold(_QUALIFIER.sub(' ', title))}{parts}"
+    return f"{_fold_artist(artist)}|{_fold(_QUALIFIER.sub(' ', title))}{parts}"
 
 
 def parse_wish(line: str) -> dict:

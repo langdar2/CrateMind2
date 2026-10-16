@@ -209,6 +209,15 @@ def test_song_key_keeps_numbered_parts_apart():
     assert _key("Blakes Landgang (Pt. 1) (Live)") == _key("Blakes Landgang (Pt. 1)")
 
 
+def test_song_key_ignores_a_leading_the_on_the_artist_only():
+    """"The Goo Goo Dolls" in the folder, "Goo Goo Dolls" on the wish list."""
+    assert db.song_key_for("The Goo Goo Dolls", "Iris") == db.song_key_for("Goo Goo Dolls", "Iris")
+    # A title keeps its article - "The Trooper" is not "Trooper".
+    assert db.song_key_for("Iron Maiden", "The Trooper") != db.song_key_for("Iron Maiden", "Trooper")
+    # An artist that is nothing but the article is left alone.
+    assert db.song_key_for("The The", "Infected").startswith("the")
+
+
 def test_song_key_keeps_covers_apart():
     """Different artists playing the same title are different recordings."""
     assert _key("Enter Sandman", artist="Weezer") != _key("Enter Sandman")
