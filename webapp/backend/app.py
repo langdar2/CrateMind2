@@ -403,7 +403,7 @@ def list_graph_artists():
 
 @app.get("/api/graph/{artist}")
 def get_artist_graph(artist: str, limit: int = 20):
-    result = graph.neighbourhood(app.state.graph, artist.lower(), limit)
+    result = graph.neighbourhood(app.state.graph, db.normalize_name(artist), limit)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Künstler nicht gefunden: {artist}")
     return result
@@ -483,7 +483,7 @@ def select_tracks(req: PreviewRequest) -> list:
         # other, so a scheduled refresh draws new tracks by the same artists.
         if not req.artists:
             raise HTTPException(status_code=400, detail="artists fehlt")
-        wanted = [a.lower() for a in req.artists]
+        wanted = [db.normalize_name(a) for a in req.artists]
         allowed = {t["path"] for t in tracks}  # thumbs-down already removed
         picked = [t for t in graph.pick_for_artists(app.state.graph, wanted, req.per_artist)
                   if t["path"] in allowed]

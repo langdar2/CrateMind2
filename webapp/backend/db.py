@@ -3,6 +3,7 @@ import math
 import re
 import sqlite3
 import time
+import unicodedata
 
 import numpy as np
 
@@ -37,7 +38,18 @@ def artist_of(path: str) -> str:
     sampler at the same five tracks - fine for the purpose.
     """
     folder = path.rsplit("/", 2)[-2] if path.count("/") >= 2 else ""
-    return folder.split(" - ")[0].strip().lower()
+    return normalize_name(folder.split(" - ")[0])
+
+
+def normalize_name(name: str) -> str:
+    """Lower-cased, NFC-normalised artist name used as a lookup key.
+
+    macOS hands out file names decomposed (NFD: "o" + combining diaeresis),
+    while anything typed or stored elsewhere is composed (NFC: "ö"). Without
+    this, "böhse onkelz" from a recipe never matched the one parsed from a
+    path, and 17 artists with umlauts silently dropped out of graph playlists.
+    """
+    return unicodedata.normalize("NFC", name).strip().lower()
 
 
 # "01. ", "1 - ", "406. " - the track number some filenames carry up front.

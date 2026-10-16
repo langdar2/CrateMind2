@@ -140,6 +140,13 @@ def test_fetch_local_plays_is_most_recent_first():
     assert [p["path"] for p in db.fetch_local_plays(conn)] == ["/music/b.mp3", "/music/a.mp3"]
 
 
+def test_artist_keys_match_across_unicode_forms():
+    """macOS paths are NFD, typed names NFC; both must land on one key."""
+    import unicodedata
+    nfd_path = unicodedata.normalize("NFD", "/music/Böhse Onkelz - Die Firma/07. x.flac")
+    assert db.artist_of(nfd_path) == db.normalize_name("Böhse Onkelz")
+
+
 def test_an_empty_recipe_counts_as_no_recipe():
     """save_description leaves a "{}" recipe behind for recipe-less playlists;
     reading that as a real recipe let one be scheduled and fail every run."""
@@ -542,6 +549,7 @@ if __name__ == "__main__":
     test_load_ok_tracks_returns_only_ok_with_embedding()
     test_load_ok_tracks_joins_preferences_and_leaves_unscored_null()
     test_percentile_ranks_scores_among_scored_tracks_only()
+    test_artist_keys_match_across_unicode_forms()
     test_an_empty_recipe_counts_as_no_recipe()
     test_description_round_trips_alongside_the_recipe()
     test_description_works_without_a_recipe()
