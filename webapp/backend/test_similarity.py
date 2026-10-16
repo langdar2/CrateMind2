@@ -101,6 +101,37 @@ def test_respects_limit():
     assert len(result) == 2
 
 
+def test_a_banned_seed_shifts_ranking_towards_taste():
+    """Neighbours of a disliked seed probably share what was disliked, so
+    sound counts for less and taste for more -- softly, nothing is dropped."""
+    def rated(path, emb, pct):
+        t = _track(path, emb)
+        t["percentile"] = pct
+        return t
+
+    seed = _track("/seed.mp3", [1.0, 0.0])
+    closest_unliked = rated("/near.mp3", [1.0, 0.02], 5)
+    liked_bit_further = rated("/liked.mp3", [1.0, 0.25], 95)
+    pool = [seed, closest_unliked, liked_bit_further]
+
+    plain = similarity.top_similar(seed, pool, limit=2, taste_weight=0.3)
+    assert plain[0]["path"] == "/near.mp3"          # sound wins normally
+
+    seed["rating"] = -1
+    banned = similarity.top_similar(seed, pool, limit=2, taste_weight=0.3)
+    assert banned[0]["path"] == "/liked.mp3"         # taste wins once banned
+    assert {t["path"] for t in banned} == {"/near.mp3", "/liked.mp3"}  # nothing removed
+
+
+def test_a_banned_seed_softens_even_pure_sound_ranking():
+    seed = _track("/seed.mp3", [1.0, 0.0])
+    seed["rating"] = -1
+    a = _track("/a.mp3", [1.0, 0.0]); a["percentile"] = 0
+    b = _track("/b.mp3", [1.0, 0.3]); b["percentile"] = 100
+    out = similarity.top_similar(seed, [seed, a, b], limit=2, taste_weight=0.0)
+    assert len(out) == 2
+
+
 if __name__ == "__main__":
     test_ranks_by_cosine_similarity_descending()
     test_excludes_seed_even_if_present_in_input()

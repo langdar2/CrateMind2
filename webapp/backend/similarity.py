@@ -14,6 +14,15 @@ NEUTRAL_PERCENTILE = 50.0
 SHORTLIST_FACTOR = 10
 
 
+# How far a thumbs-down seed pushes its own sound down the list. A banned
+# seed is still allowed -- "more like this, but not this" is a fair ask -- yet
+# its closest neighbours most likely share whatever was disliked about it.
+# Shifting the ranking towards taste does that softly: neighbours stay
+# eligible, they just have to be liked more to keep their place. No source
+# covered this case; 0.3 is a judgement call, tune it on real listening.
+BANNED_SEED_TASTE_BOOST = 0.3
+
+
 def top_similar(seed: dict, tracks: list, limit: int = 30, taste_weight: float = 0.0) -> list:
     """Closest tracks to the seed, optionally reordered towards well-liked music.
 
@@ -34,6 +43,8 @@ def top_similar(seed: dict, tracks: list, limit: int = 30, taste_weight: float =
     scores = (embeddings @ seed_vec) / (norms * seed_norm + 1e-8)
 
     order = np.argsort(-scores)
+    if seed.get("rating", 0) < 0:
+        taste_weight = min(1.0, taste_weight + BANNED_SEED_TASTE_BOOST)
     if taste_weight <= 0:
         return [others[i] for i in order[:limit]]
 

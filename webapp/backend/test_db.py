@@ -455,15 +455,17 @@ def test_counted_plays_rank_like_apple_plays():
     path = _make_test_db()
     conn = db.get_connection(path)
     conn.execute(
-        "INSERT INTO preferences (path, song_key, plays, skips, score) "
-        "VALUES ('/music/a.mp3', 'a', 4, 0, ?)", (db.score_of(4, 0),)
+        "INSERT INTO preferences (path, song_key, plays, skips, score, "
+        "weighted_plays, weighted_skips) VALUES ('/music/a.mp3', 'a', 4, 0, ?, 4, 0)",
+        (db.score_of(4, 0),)
     )
     conn.commit()
 
     for _ in range(4):
         db.count_play(conn, "/music/b.mp3")
     by_path = {t["path"]: t for t in db.load_ok_tracks(conn)}
-    assert by_path["/music/b.mp3"]["score"] == by_path["/music/a.mp3"]["score"]
+    # equal up to the milliseconds the fresh plays have already aged
+    assert abs(by_path["/music/b.mp3"]["score"] - by_path["/music/a.mp3"]["score"]) < 1e-6
 
     # a fifth play puts it ahead, and the percentile follows the score
     db.count_play(conn, "/music/b.mp3")
@@ -476,15 +478,76 @@ def test_counted_plays_add_to_apple_plays_for_the_same_track():
     path = _make_test_db()
     conn = db.get_connection(path)
     conn.execute(
-        "INSERT INTO preferences (path, song_key, plays, skips, score) "
-        "VALUES ('/music/a.mp3', 'a', 3, 1, ?)", (db.score_of(3, 1),)
+        "INSERT INTO preferences (path, song_key, plays, skips, score, "
+        "weighted_plays, weighted_skips) VALUES ('/music/a.mp3', 'a', 3, 1, ?, 3, 1)",
+        (db.score_of(3, 1),)
     )
     conn.commit()
 
     db.count_play(conn, "/music/a.mp3")
     db.count_play(conn, "/music/a.mp3", skipped=True)
     a = next(t for t in db.load_ok_tracks(conn) if t["path"] == "/music/a.mp3")
-    assert a["score"] == db.score_of(4, 2)
+    assert abs(a["score"] - db.score_of(4, 2)) < 1e-6
+
+
+def test_a_fresh_play_does_not_undo_the_decay_of_old_apple_plays():
+    """200 decade-old plays must stay faded: one new play adds about one
+    play's worth, not the 200 raw plays back at full weight."""
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    aged = 200 * 0.5 ** (10 / db.HALF_LIFE_YEARS)
+    conn.execute(
+        "INSERT INTO preferences (path, song_key, plays, skips, score, "
+        "weighted_plays, weighted_skips) VALUES ('/music/a.mp3', 'a', 200, 0, ?, ?, 0)",
+        (db.score_of(aged, 0), aged)
+    )
+    conn.commit()
+
+    db.count_play(conn, "/music/a.mp3")
+    a = next(t for t in db.load_ok_tracks(conn) if t["path"] == "/music/a.mp3")
+    assert abs(a["score"] - db.score_of(aged + 1, 0)) < 1e-6
+
+
+def test_player_plays_fade_with_the_same_half_life():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    year = 365.25 * 86400
+    now = 1_900_000_000.0
+    conn.executemany("INSERT INTO play_events (path, skipped, at) VALUES (?, ?, ?)",
+                     [("/music/a.mp3", 0, now),                       # today: 1.0
+                      ("/music/a.mp3", 0, now - db.HALF_LIFE_YEARS * year),  # 0.5
+                      ("/music/a.mp3", 1, now - 2 * db.HALF_LIFE_YEARS * year)])  # skip, 0.25
+    conn.commit()
+    plays, skips = db.load_weighted_plays(conn, now=now)["/music/a.mp3"]
+    assert abs(plays - 1.5) < 1e-9 and abs(skips - 0.25) < 1e-9
+
+
+def test_scores_from_an_older_import_keep_apples_share():
+    """A preferences table imported before weighted counts were stored must
+    still contribute Apple's plays, not be dropped by the first player play."""
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    conn.execute("INSERT INTO preferences (path, song_key, plays, skips, score) "
+                 "VALUES ('/music/a.mp3', 'a', 9, 0, ?)", (db.score_of(9, 0),))
+    conn.commit()
+    db.count_play(conn, "/music/a.mp3")
+    a = next(t for t in db.load_ok_tracks(conn) if t["path"] == "/music/a.mp3")
+    assert abs(a["score"] - db.score_of(10, 0)) < 1e-6
+
+
+def test_play_totals_from_before_events_are_carried_over():
+    path = _make_test_db()
+    conn = db.get_connection(path)
+    conn.execute("DROP TABLE play_events")
+    conn.execute("INSERT INTO plays VALUES ('/music/a.mp3', 3, 1, 1700000000.0)")
+    conn.commit()
+    conn = db.get_connection(path)   # reconnect runs the migration
+    rows = conn.execute("SELECT skipped, at FROM play_events WHERE path = '/music/a.mp3'"
+                        ).fetchall()
+    assert sorted(rows) == [(0, 1700000000.0)] * 3 + [(1, 1700000000.0)]
+    db.get_connection(path)          # idempotent: no second copy
+    n, = conn.execute("SELECT COUNT(*) FROM play_events").fetchone()
+    assert n == 4
 
 
 def test_skips_lower_the_score_and_plays_survive_a_reimport():

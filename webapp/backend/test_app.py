@@ -85,7 +85,7 @@ def test_play_endpoint_counts_and_refreshes_the_cache():
         # the cached list backs every playlist, so the play must show there now
         after = next(t for t in app_module.app.state.tracks
                      if t["path"] == "/music/a.mp3")["score"]
-        assert before is None and after == db.score_of(1, 0)
+        assert before is None and abs(after - db.score_of(1, 0)) < 1e-6
 
         assert client.post("/api/plays",
                            json={"path": "/music/a.mp3", "skipped": True}

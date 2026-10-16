@@ -195,6 +195,29 @@ def get_connection(db_path: str) -> sqlite3.Connection:
         )
         """
     )
+    # Each play or skip with its time, so it can be aged like Apple's history.
+    # `plays` above stays as the running total the API reports.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS play_events (
+            path TEXT NOT NULL,
+            skipped INTEGER NOT NULL,
+            at REAL NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_play_events_path ON play_events(path)")
+    if not conn.execute("SELECT 1 FROM play_events LIMIT 1").fetchone():
+        # Plays counted before events existed: one event each, dated at the
+        # track's last play -- the only time recorded for them.
+        for path, n_plays, n_skips, last in conn.execute(
+                "SELECT path, plays, skips, last_played FROM plays").fetchall():
+            conn.executemany("INSERT INTO play_events (path, skipped, at) VALUES (?, ?, ?)",
+                             [(path, 0, last)] * n_plays + [(path, 1, last)] * n_skips)
+    pref_cols = {r[1] for r in conn.execute("PRAGMA table_info(preferences)")}
+    for col in ("weighted_plays", "weighted_skips"):  # written by import_preferences
+        if col not in pref_cols:
+            conn.execute(f"ALTER TABLE preferences ADD COLUMN {col} REAL")
     # Ratings the user gave by hand, in the player or here. Deliberately NOT
     # in `preferences`: that table is rebuilt wholesale by import_preferences
     # (DELETE then INSERT), which would throw hand-made ratings away on the
@@ -463,16 +486,39 @@ def _percentiles(scores: dict) -> dict:
 
 def count_play(conn: sqlite3.Connection, path: str, skipped: bool = False) -> dict:
     """Record one play (or skip) of a track by the player."""
+    now = time.time()
     col = "skips" if skipped else "plays"
     conn.execute(
         f"INSERT INTO plays (path, {col}, last_played) VALUES (?, 1, ?) "
         f"ON CONFLICT(path) DO UPDATE SET {col} = {col} + 1, "
         "last_played = excluded.last_played",
-        (path, time.time()),
+        (path, now),
     )
+    conn.execute("INSERT INTO play_events (path, skipped, at) VALUES (?, ?, ?)",
+                 (path, 1 if skipped else 0, now))
     conn.commit()
     row = conn.execute("SELECT plays, skips FROM plays WHERE path = ?", (path,)).fetchone()
     return {"path": path, "plays": row[0], "skips": row[1]}
+
+
+# How fast old listening fades, matching import_preferences' --half-life-years
+# default, so a play here and a play in Apple Music age at the same rate.
+HALF_LIFE_YEARS = 2.0
+
+
+def decay(age_seconds: float, half_life_years: float = HALF_LIFE_YEARS) -> float:
+    return 0.5 ** (max(0.0, age_seconds) / (365.25 * 86400) / half_life_years)
+
+
+def load_weighted_plays(conn: sqlite3.Connection, now: float | None = None) -> dict:
+    """path -> (aged plays, aged skips) from the player's own play events."""
+    now = time.time() if now is None else now
+    out: dict = {}
+    for path, skipped, at in conn.execute("SELECT path, skipped, at FROM play_events"):
+        w = decay(now - at)
+        pl, sk = out.get(path, (0.0, 0.0))
+        out[path] = (pl, sk + w) if skipped else (pl + w, sk)
+    return out
 
 
 def load_plays(conn: sqlite3.Connection) -> dict:
@@ -515,7 +561,7 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
         """
         SELECT t.path, f.bpm, f.key, f.mood_happy, f.mood_aggressive, f.mood_relaxed,
                f.mood_party, f.danceability, f.embedding,
-               p.plays, p.skips, p.score, p.song_key, t.first_seen
+               p.weighted_plays, p.weighted_skips, p.score, p.song_key, t.first_seen
         FROM tracks t
         JOIN features f ON f.path = t.path
         LEFT JOIN preferences p ON p.path = t.path
@@ -524,22 +570,28 @@ def load_ok_tracks(conn: sqlite3.Connection) -> list:
     ).fetchall()
 
     ratings = load_ratings(conn)
-    # Plays this player counted are added to Apple's before scoring, so a
-    # track played here ranks exactly like one played in Apple Music. The
-    # percentile is therefore ranked in Python rather than SQL: the window
-    # function could only see the stored preferences score, which these plays
-    # are not part of.
-    counted = load_plays(conn)
+    # Plays this player counted are aged and added to Apple's aged counts
+    # before scoring, so a play here ranks exactly like one in Apple Music --
+    # including how much it has faded. Adding raw counts instead threw Apple's
+    # decay away: 200 decade-old plays scored 1.98, and one fresh play lifted
+    # that to 5.31. Percentiles are ranked in Python because the window
+    # function could only see the stored Apple score.
+    counted = load_weighted_plays(conn)
     scores = {}
     for row in rows:
-        path, apple_plays, apple_skips, apple_score = row[0], row[9], row[10], row[11]
-        extra_plays, extra_skips = counted.get(path, (0, 0))
+        path, apple_wplays, apple_wskips, apple_score = row[0], row[9], row[10], row[11]
+        extra_plays, extra_skips = counted.get(path, (0.0, 0.0))
         if not extra_plays and not extra_skips:
             if apple_score is not None:
                 scores[path] = apple_score
             continue
-        scores[path] = score_of((apple_plays or 0) + extra_plays,
-                                (apple_skips or 0) + extra_skips)
+        if apple_score is not None and apple_wplays is None:
+            # Imported before weighted counts were stored: keep Apple's
+            # contribution by inverting score_of with no skips, rather than
+            # dropping it. Re-run import_preferences to get the exact split.
+            apple_wplays, apple_wskips = math.expm1(apple_score), 0.0
+        scores[path] = score_of((apple_wplays or 0.0) + extra_plays,
+                                (apple_wskips or 0.0) + extra_skips)
     percentiles = _percentiles(scores)
 
     tracks = []

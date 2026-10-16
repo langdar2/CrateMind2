@@ -46,7 +46,11 @@ CREATE TABLE IF NOT EXISTS preferences (
     song_key TEXT NOT NULL,
     plays INTEGER NOT NULL,
     skips INTEGER NOT NULL,
-    score REAL NOT NULL
+    score REAL NOT NULL,
+    -- the plays/skips as score_of saw them, aged by the half-life; the
+    -- webapp adds the player's own aged plays to these before rescoring
+    weighted_plays REAL,
+    weighted_skips REAL
 );
 CREATE INDEX IF NOT EXISTS idx_preferences_score ON preferences(score);
 CREATE INDEX IF NOT EXISTS idx_preferences_song_key ON preferences(song_key);
@@ -139,15 +143,21 @@ def collect(conn: sqlite3.Connection, index: dict, history: dict = None,
             continue
         skips = sum(t.get("Skip Count") or 0 for t in tracks)
         song_key = norm(tracks[0].get("Artist") or "") + "|" + norm(tracks[0].get("Title") or "")
-        rows.append((path, song_key, plays, skips, score_of(weighted_plays, weighted_skips)))
+        rows.append((path, song_key, plays, skips, score_of(weighted_plays, weighted_skips),
+                     weighted_plays, weighted_skips))
     return rows
 
 
 def write(conn: sqlite3.Connection, rows: list) -> None:
     conn.executescript(SCHEMA_SQL)
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(preferences)")}
+    for col in ("weighted_plays", "weighted_skips"):  # tables made before these existed
+        if col not in columns:
+            conn.execute(f"ALTER TABLE preferences ADD COLUMN {col} REAL")
     conn.execute("DELETE FROM preferences")
     conn.executemany(
-        "INSERT INTO preferences (path, song_key, plays, skips, score) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO preferences (path, song_key, plays, skips, score, "
+        "weighted_plays, weighted_skips) VALUES (?, ?, ?, ?, ?, ?, ?)",
         rows,
     )
     conn.commit()
@@ -189,7 +199,7 @@ def main() -> None:
     if args.dry_run:
         print("\ndry run - nothing written")
         print("top 10:")
-        for path, _, plays, skips, score in sorted(rows, key=lambda r: -r[4])[:10]:
+        for path, _, plays, skips, score, *_ in sorted(rows, key=lambda r: -r[4])[:10]:
             print(f"  {score:5.2f}  {plays:4d}p/{skips:3d}s  {Path(path).name[:60]}")
     else:
         write(conn, rows)
