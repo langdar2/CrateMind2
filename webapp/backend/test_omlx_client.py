@@ -114,6 +114,40 @@ def test_description_mentions_the_mood():
     assert "Stimmung: entspannt" in omlx_client._describe_tracks(tracks)
 
 
+def _rated(n=3):
+    return [{"display": {"artist": "A", "title": f"Lied {i}"}} for i in range(n)]
+
+
+def test_rate_fit_parses_scores_by_index():
+    payload = _chat_payload('{"0": 9, "1": 2, "2": 6}')
+    with patch("omlx_client.httpx.post", return_value=FakeResponse(payload)):
+        assert omlx_client.rate_fit("Dinner", _rated()) == {0: 9, 1: 2, 2: 6}
+
+
+def test_rate_fit_survives_a_fenced_answer_and_clamps_the_range():
+    payload = _chat_payload('```json\n{"0": 15, "1": -3}\n```')
+    with patch("omlx_client.httpx.post", return_value=FakeResponse(payload)):
+        assert omlx_client.rate_fit("x", _rated(2)) == {0: 10, 1: 0}
+
+
+def test_rate_fit_ignores_entries_it_cannot_use():
+    """Wrong indices, words and booleans are dropped, not guessed at."""
+    payload = _chat_payload('{"0": 7, "9": 5, "x": 4, "1": "gut", "2": true}')
+    with patch("omlx_client.httpx.post", return_value=FakeResponse(payload)):
+        assert omlx_client.rate_fit("x", _rated()) == {0: 7}
+
+
+def test_rate_fit_returns_nothing_when_the_model_is_down_or_rambles():
+    import httpx
+    with patch("omlx_client.httpx.post", side_effect=httpx.ConnectError("refused")):
+        assert omlx_client.rate_fit("x", _rated()) == {}
+    with patch("omlx_client.httpx.post", return_value=FakeResponse(_chat_payload("Gerne!"))):
+        assert omlx_client.rate_fit("x", _rated()) == {}
+    with patch("omlx_client.httpx.post", return_value=FakeResponse(_chat_payload("[1, 2]"))):
+        assert omlx_client.rate_fit("x", _rated()) == {}
+    assert omlx_client.rate_fit("x", []) == {}
+
+
 def test_no_tracks_means_no_name():
     assert omlx_client.suggest_playlist_name([]) is None
 
@@ -141,6 +175,10 @@ if __name__ == "__main__":
     test_description_lists_distinct_artists_and_the_bpm_range()
     test_mood_words_only_report_clear_tendencies()
     test_description_mentions_the_mood()
+    test_rate_fit_parses_scores_by_index()
+    test_rate_fit_survives_a_fenced_answer_and_clamps_the_range()
+    test_rate_fit_ignores_entries_it_cannot_use()
+    test_rate_fit_returns_nothing_when_the_model_is_down_or_rambles()
     test_no_tracks_means_no_name()
     test_parse_prompt_to_criteria_raises_on_invalid_json()
     print("All omlx_client tests passed.")

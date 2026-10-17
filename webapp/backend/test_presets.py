@@ -161,6 +161,65 @@ def test_discovery_does_nothing_without_a_taste_filter():
     assert [t["path"] for t in a] == [t["path"] for t in b]
 
 
+def _mood_track(i, **moods):
+    t = _track(bpm=100, danceability=0.5, mood_party=0.1, mood_relaxed=0.5)
+    t.update(path=f"/m/{i}.mp3", mood_happy=0.6, mood_aggressive=0.1, **moods)
+    return t
+
+
+def test_an_unreachable_mood_limit_is_loosened_instead_of_returning_nothing():
+    """The model wrote max_mood_aggressive 0.0 for a romantic dinner; no track
+    has exactly zero, so the list came back empty."""
+    pool = [dict(_mood_track(i), mood_aggressive=0.05 + i * 0.001) for i in range(40)]
+    assert presets.filter_by_criteria(pool, {"max_mood_aggressive": 0.0}, limit=30) == []
+
+    result, used = presets.filter_with_fallback(pool, {"max_mood_aggressive": 0.0}, limit=30)
+
+    assert len(result) == 30
+    assert used["max_mood_aggressive"] > 0.0
+
+
+def test_loosening_moves_each_limit_the_widening_way():
+    loose = presets._loosen({"max_mood_party": 0.2, "min_mood_happy": 0.5,
+                             "min_bpm": 100, "min_percentile": 90}, 0.1)
+    assert round(loose["max_mood_party"], 2) == 0.3      # a max rises
+    assert round(loose["min_mood_happy"], 2) == 0.4      # a min falls
+    assert loose["min_bpm"] == 100                       # not a mood
+    assert loose["min_percentile"] == 90                 # taste is left alone
+
+
+def test_loosening_stops_at_the_range_edges():
+    loose = presets._loosen({"max_mood_party": 0.95, "min_mood_happy": 0.05}, 0.4)
+    assert loose["max_mood_party"] == 1.0 and loose["min_mood_happy"] == 0.0
+
+
+def test_a_brief_that_already_matches_is_not_loosened():
+    pool = [_mood_track(i) for i in range(10)]
+    crit = {"min_mood_happy": 0.5}
+    _, used = presets.filter_with_fallback(pool, crit, limit=5)
+    assert used == crit
+
+
+def test_rerank_orders_by_fit_and_drops_clear_misses():
+    pool = [_mood_track(i) for i in range(4)]
+    out = presets.rerank_by_fit(pool, {0: 3, 1: 9, 2: 6, 3: 0})
+    assert [t["path"] for t in out] == ["/m/1.mp3", "/m/2.mp3"]  # 3 and 0 are misses
+
+
+def test_rerank_keeps_unrated_tracks_rather_than_treating_them_as_misses():
+    """"The model said nothing" is not "the model said no"."""
+    pool = [_mood_track(i) for i in range(3)]
+    assert presets.rerank_by_fit(pool, {}) == pool
+    out = presets.rerank_by_fit(pool, {0: 9})   # 1 and 2 never rated
+    assert [t["path"] for t in out] == ["/m/0.mp3", "/m/1.mp3", "/m/2.mp3"]
+
+
+def test_rerank_ties_keep_the_audio_order():
+    pool = [_mood_track(i) for i in range(3)]
+    out = presets.rerank_by_fit(pool, {0: 7, 1: 7, 2: 7})
+    assert [t["path"] for t in out] == ["/m/0.mp3", "/m/1.mp3", "/m/2.mp3"]
+
+
 def test_unknown_criteria_keys_are_ignored():
     tracks = [_track(bpm=140, danceability=0.9, mood_party=0.9, mood_relaxed=0.1)]
     result = presets.filter_by_criteria(tracks, {"vibe": "great"})
@@ -265,5 +324,12 @@ if __name__ == "__main__":
     test_discovery_picks_differ_between_calls()
     test_discovery_respects_the_other_criteria()
     test_discovery_does_nothing_without_a_taste_filter()
+    test_an_unreachable_mood_limit_is_loosened_instead_of_returning_nothing()
+    test_loosening_moves_each_limit_the_widening_way()
+    test_loosening_stops_at_the_range_edges()
+    test_a_brief_that_already_matches_is_not_loosened()
+    test_rerank_orders_by_fit_and_drops_clear_misses()
+    test_rerank_keeps_unrated_tracks_rather_than_treating_them_as_misses()
+    test_rerank_ties_keep_the_audio_order()
     test_unknown_criteria_keys_are_ignored()
     print("All presets tests passed.")

@@ -14,6 +14,16 @@ _SYSTEM_PROMPT = (
     "Convert the user's playlist mood/activity description into a JSON object "
     "of numeric thresholds. Allowed keys: " + ", ".join(sorted(ALLOWED_CRITERIA_KEYS)) + ". "
     "bpm is beats per minute (typically 60-180). "
+    "Pick the direction of each limit deliberately: a 'min_' key says the "
+    "value must be AT LEAST that high, a 'max_' key AT MOST. "
+    "Slow, calm, relaxed, background or sleepy moods need a max_bpm "
+    "(about 100-110); fast, workout, running or energetic moods need a "
+    "min_bpm (about 125-135). Never give a calm description a min_bpm or an "
+    "energetic one a max_bpm. "
+    "Calm or gentle also means a LOW mood_aggressive (a max_, about 0.2-0.3, "
+    "never 0.0) and a HIGH mood_relaxed (a min_, about 0.5-0.6). "
+    "Energetic, party or workout means a HIGH mood_party or danceability "
+    "(a min_, about 0.5-0.6) and never a max_ on them. "
     "percentile is how much the listener likes a track, 0-100: min_percentile 90 "
     "keeps only their top 10%, 50 keeps the better-liked half. Use it when the "
     "description asks for favourites or well-liked music. "
@@ -130,6 +140,66 @@ def suggest_playlist_description(tracks: list) -> str:
 
     text = " ".join(text.strip().strip('"\'`*').split())
     return text[:MAX_DESCRIPTION_LENGTH] if text else None
+
+
+MAX_RATE_TRACKS = 80
+
+
+def rate_fit(theme: str, tracks: list) -> dict:
+    """How well each track fits a theme, 0-10, from its artist and title.
+
+    The mood sliders only know five audio values, so "romantic dinner with
+    love songs" cannot be expressed in them - a children's lullaby is as
+    gentle and untroubled as a ballad. Titles carry what audio cannot, and a
+    local model reads them for free.
+
+    Returns {index: score}, empty when the model is unavailable or answers
+    with something unusable; callers then keep the order they already had.
+    Tracks beyond MAX_RATE_TRACKS are not rated, to keep the answer short.
+    """
+    tracks = tracks[:MAX_RATE_TRACKS]
+    if not tracks:
+        return {}
+    lines = "\n".join(
+        f"{i}. {t['display']['artist']} - {t['display']['title']}"
+        for i, t in enumerate(tracks)
+    )
+    body = {
+        "model": OMLX_MODEL,
+        "messages": [{"role": "user", "content": (
+            f"Du bewertest Songs für eine Playlist. Thema: \"{theme}\".\n"
+            "Gib für JEDEN Song eine ganze Zahl von 0 bis 10 an: wie gut er zum "
+            "Thema passt (10 = perfekt, 0 = passt nicht, z.B. Kinderlieder oder "
+            "hektische Musik bei einem ruhigen Thema).\n"
+            'Antworte NUR mit JSON, Schlüssel ist die Nummer: {"0": 7, "1": 2}\n\n'
+            + lines)}],
+        # Roughly 6 tokens per entry, with headroom.
+        "max_tokens": 120 + 8 * len(tracks),
+        "temperature": 0.0,
+    }
+    try:
+        response = httpx.post(f"{OMLX_BASE_URL}/v1/chat/completions", json=body, timeout=90.0)
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"]
+    except (httpx.HTTPError, KeyError, IndexError, TypeError):
+        return {}
+
+    content = content.strip()
+    if content.startswith("```"):
+        content = content.strip("`").removeprefix("json").strip()
+    try:
+        raw = json.loads(content)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+
+    scores = {}
+    for key, value in raw.items():
+        if (str(key).isdigit() and int(key) < len(tracks)
+                and isinstance(value, (int, float)) and not isinstance(value, bool)):
+            scores[int(key)] = max(0, min(10, value))
+    return scores
 
 
 def suggest_playlist_name(tracks: list) -> str:

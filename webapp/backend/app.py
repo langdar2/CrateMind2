@@ -475,8 +475,16 @@ def select_tracks(req: PreviewRequest) -> list:
             criteria = omlx_client.parse_prompt_to_criteria(req.prompt)
         except omlx_client.OmlxError as e:
             raise HTTPException(status_code=502, detail=str(e)) from e
-        matches = presets.filter_by_criteria(tracks, criteria, limit=req.limit,
-                                             discovery=req.discovery)
+        # The mood limits come from a small model and can be unreachable (it
+        # wrote "max aggressive 0.0" for a romantic dinner), so loosen them
+        # until there is something to choose from rather than return nothing.
+        # Fetch a wider pool than asked for: the re-rating below needs room to
+        # drop tracks the audio values let through but the titles give away.
+        pool_size = min(len(tracks), max(req.limit * 2, 40))
+        pool, criteria = presets.filter_with_fallback(
+            tracks, criteria, limit=pool_size, discovery=req.discovery)
+        scores = omlx_client.rate_fit(req.prompt, pool)
+        matches = presets.rerank_by_fit(pool, scores)[:req.limit]
         fitting = presets.filter_by_criteria(tracks, criteria, limit=len(tracks))
     elif req.mode == "seed":
         seed = next((t for t in tracks if t["path"] == req.seed_path), None)

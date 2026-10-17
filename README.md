@@ -69,8 +69,22 @@ Fünf Modi:
 ohne LLM, die Vorschau aktualisiert sich beim Schieben.
 
 **Prompt** — Freitext wie *„energiegeladenes Workout, nur Lieblingstracks"*.
-Das lokale Modell übersetzt das in Schwellenwerte; die Auswahl selbst bleibt
-deterministisch.
+Das lokale Modell übersetzt das in Schwellenwerte für Tempo und Stimmung,
+filtert damit die Bibliothek und bewertet die Treffer anhand von Künstler und
+Titel noch einmal nach, wie gut sie zum Thema passen. Das dauert rund eine halbe
+Minute.
+
+Er funktioniert gut bei Aktivitäten und Tempo (*Partystimmung*, *Workout*,
+*ruhiger Hintergrund*) und schwächer bei Themen, die sich nicht im Klang
+zeigen. *„Romantisches Abendessen mit Liebesliedern"* ergibt zwar ruhige
+Musik, aber auch Wiegenlieder und Filmmusik, denn aus den Audiowerten lässt
+sich nicht ablesen, ob ein Text von Liebe handelt, und das kleine lokale Modell
+bewertet nicht zuverlässig. Für solche Fälle ist **Smart (Vibe)** die bessere
+Wahl.
+
+Sind die Grenzen, die das Modell wählt, unerfüllbar (etwa „höchstens 0,0
+aggressiv"), werden sie schrittweise gelockert, statt eine leere Liste zu
+liefern.
 
 **Seed-Track** — ein Track als Ausgangspunkt, der Rest nach Klangähnlichkeit.
 Der Regler *Klang ↔ Geschmack* mischt bei, wie sehr Vorlieben mitreden.

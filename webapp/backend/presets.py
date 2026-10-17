@@ -112,6 +112,74 @@ def weave_in_fresh(matches: list, candidates: list, limit: int, share: float,
     return woven[:limit]
 
 
+# Moods run 0.0-1.0 and the model is told so, but it happily answers with
+# "max_mood_aggressive": 0.0 - a limit no track in a 33k library reaches, so
+# the whole list came back empty. These keys are loosened rather than trusted.
+_MOOD_KEYS = {f"{b}_{c}" for b in ("min", "max")
+              for c in ("danceability", "mood_happy", "mood_aggressive",
+                        "mood_relaxed", "mood_party")}
+
+
+def _loosen(criteria: dict, step: float) -> dict:
+    """The same brief with every mood limit `step` further from its edge.
+
+    A "max" limit rises and a "min" limit falls, widening what passes.
+    BPM and taste thresholds are not moods and are left as asked.
+    """
+    out = dict(criteria)
+    for key in _MOOD_KEYS & criteria.keys():
+        if key.startswith("max_"):
+            out[key] = min(1.0, criteria[key] + step)
+        else:
+            out[key] = max(0.0, criteria[key] - step)
+    return out
+
+
+def filter_with_fallback(tracks: list, criteria: dict, limit: int = 30,
+                         discovery: float = 0.0) -> tuple:
+    """filter_by_criteria, relaxed until it yields enough tracks.
+
+    Returns (tracks, criteria actually used). A brief that matches nothing is
+    worse than one that matches loosely: the user asked for "romantic dinner"
+    and got an empty list because the model wrote 0.0 for aggression.
+    Loosening is gradual so the result stays as close to the brief as the
+    library allows, and stops as soon as `limit` tracks are found.
+    """
+    for step in (0.0, 0.1, 0.2, 0.3, 0.4):
+        used = _loosen(criteria, step)
+        result = filter_by_criteria(tracks, used, limit=limit, discovery=discovery)
+        if len(result) >= limit:
+            break
+    # Falls through with the loosest attempt if even that stayed short; a short
+    # list is still better than none, and it is what the library can offer.
+    return result, used
+
+
+# Below this a track is judged not to fit the theme and is dropped outright,
+# rather than merely sorted last: the audio filter already let it through, so
+# it sits in the pool, and a short list of good fits beats a full one with a
+# children's lullaby in it.
+MIN_FIT = 6
+
+
+def rerank_by_fit(pool: list, scores: dict) -> list:
+    """Order a pool by how well titles fit the theme, dropping clear misses.
+
+    `scores` maps pool index to 0-10 and may be empty or partial when the
+    model was unavailable or skipped entries. Then the pool is returned in its
+    original order: an unrated track is kept, never treated as a bad fit,
+    because "the model said nothing" is not "the model said no".
+    """
+    if not scores:
+        return pool
+    rated = [(scores[i], i, t) for i, t in enumerate(pool) if i in scores]
+    unrated = [t for i, t in enumerate(pool) if i not in scores]
+    keep = [(s, i, t) for s, i, t in rated if s >= MIN_FIT]
+    # Best fit first; ties keep the pool's own order, which is the audio ranking.
+    keep.sort(key=lambda r: (-r[0], r[1]))
+    return [t for _, _, t in keep] + unrated
+
+
 def filter_by_criteria(tracks: list, criteria: dict, limit: int = 30,
                        discovery: float = 0.0) -> list:
     matches = [t for t in tracks if all(c(t, v) for c, v in _checks(criteria))]
