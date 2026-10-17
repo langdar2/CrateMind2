@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from "d3-force";
 import { useNavigate } from "react-router-dom";
+import Busy from "../components/Busy.jsx";
 import { getGraphArtists, getArtistGraph, getGraphPlaylist } from "../api.js";
 
 const WIDTH = 900;
@@ -152,6 +153,7 @@ export default function Graph() {
         >
           {building ? "Stelle zusammen..." : "Diese Künstler als Playlist"}
         </button>
+        <Busy active={building} hint="Suche passende Titel dieser Künstler" />
       </div>
 
       <div className="tile">

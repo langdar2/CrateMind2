@@ -6,6 +6,7 @@ import {
   deleteSchedule,
   runSchedule,
 } from "../api.js";
+import Busy from "../components/Busy.jsx";
 
 const WEEKDAYS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 
@@ -244,6 +245,8 @@ export default function Schedules() {
               Zeitplan löschen
             </button>
           </div>
+          <Busy active={busy === entry.playlist_id}
+                hint="Baue die Playlist neu und lasse die Beschreibung schreiben" />
         </div>
       ))}
     </div>

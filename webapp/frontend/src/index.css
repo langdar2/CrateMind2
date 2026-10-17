@@ -184,9 +184,60 @@ main {
   50% { opacity: 1; box-shadow: 0 0 8px 2px var(--lcars-gold); }
 }
 
+/* Busy indicator: a row of LCARS blocks with one lit segment sweeping across,
+   in the console's own colours. */
+.busy {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 12px 0 4px;
+  padding: 10px 16px;
+  background: var(--glass-bg-strong);
+  border-left: 6px solid var(--lcars-gold);
+  border-radius: 4px 18px 18px 4px;
+}
+
+.busy-bars {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.busy-bars span {
+  width: 18px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--lcars-orange);
+  opacity: 0.2;
+  animation: busy-sweep 1.1s ease-in-out infinite;
+}
+
+.busy-bars span:nth-child(3n + 2) { background: var(--lcars-gold); }
+.busy-bars span:nth-child(3n) { background: var(--lcars-lilac); }
+
+@keyframes busy-sweep {
+  0%, 100% { opacity: 0.2; transform: scaleY(0.7); }
+  30% { opacity: 1; transform: scaleY(1.25); }
+  60% { opacity: 0.35; transform: scaleY(0.85); }
+}
+
+.busy-text {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.busy-hint { color: var(--text-primary); }
+.busy-time { color: var(--lcars-gold); font-variant-numeric: tabular-nums; font-weight: 700; }
+
 @media (prefers-reduced-motion: reduce) {
   .tile h3::after { animation: none; }
   .standby-light { animation: none; opacity: 1; }
+  .busy-bars span { animation: none; opacity: 0.7; transform: none; }
 }
 
 .progress-bar {

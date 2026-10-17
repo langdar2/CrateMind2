@@ -10,6 +10,7 @@ import {
   previewWishlist,
 } from "../api.js";
 import TrackLabel from "../components/TrackLabel.jsx";
+import Busy from "../components/Busy.jsx";
 
 const MODES = [
   { id: "manual", label: "Manuell" },
@@ -27,6 +28,16 @@ const MOOD_FIELDS = [
   { key: "mood_party", label: "Party" },
 ];
 
+// What is actually taking the time, so the wait explains itself.
+function previewHint(mode) {
+  return {
+    prompt: "Das lokale Modell wertet Tempo und Stimmung aus und bewertet die Treffer nach Titel",
+    smart: "Das Modell sortiert 150 Kandidaten nach deiner Stimmung",
+    seed: "Suche klanglich ähnliche Tracks",
+    wishlist: "Gleiche die Liste mit der Bibliothek ab und fülle auf",
+  }[mode] || "Stelle die Vorschau zusammen";
+}
+
 export default function Playlists() {
   const [hasTracks, setHasTracks] = useState(null);
   const [mode, setMode] = useState("manual");
@@ -43,6 +54,8 @@ export default function Playlists() {
   const [preview, setPreview] = useState([]);
   const [playlistName, setPlaylistName] = useState("");
   const [naming, setNaming] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [description, setDescription] = useState("");
   const [wishText, setWishText] = useState("");
   const [wishLimit, setWishLimit] = useState(50);
@@ -114,6 +127,7 @@ export default function Playlists() {
 
   const runWishlist = async () => {
     setError(null);
+    setPreviewing(true);
     try {
       const result = await previewWishlist(wishText, wishLimit);
       setPreview(result.tracks);
@@ -121,6 +135,8 @@ export default function Playlists() {
       setWishResult({ found: result.found, wished: result.wished, missing: result.missing });
     } catch (e) {
       setError(e.message);
+    } finally {
+      setPreviewing(false);
     }
   };
 
@@ -136,6 +152,7 @@ export default function Playlists() {
         : mode === "smart"
         ? { mode, seed_path: seedPath || undefined, mood_prompt: moodPrompt }
         : { mode, seed_path: seedPath, taste_weight: tasteWeight / 100 });
+    setPreviewing(true);
     try {
       const result = await previewPlaylist(recipe);
       setPreview(result.tracks);
@@ -143,6 +160,8 @@ export default function Playlists() {
       setLastRecipe(recipe);
     } catch (e) {
       setError(e.message);
+    } finally {
+      setPreviewing(false);
     }
   };
 
@@ -189,6 +208,7 @@ export default function Playlists() {
 
   const handleCreate = async () => {
     setError(null);
+    setCreating(true);
     try {
       const result = await createPlaylist({
         name: playlistName,
@@ -202,6 +222,8 @@ export default function Playlists() {
       setRenderers((await getRenderers()).renderers);
     } catch (e) {
       setError(e.message);
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -396,7 +418,12 @@ export default function Playlists() {
           />
         )}
 
-        {mode !== "manual" && <button onClick={() => runPreview()}>Vorschau erzeugen</button>}
+        {mode !== "manual" && (
+          <button onClick={() => runPreview()} disabled={previewing}>
+            {previewing ? "Läuft..." : "Vorschau erzeugen"}
+          </button>
+        )}
+        <Busy active={previewing} hint={previewHint(mode)} />
       </div>
 
       {mode === "wishlist" && wishResult && (
@@ -462,6 +489,7 @@ export default function Playlists() {
           <button onClick={fetchName} disabled={naming}>
             {naming ? "Denkt nach..." : "Name vorschlagen"}
           </button>
+          <Busy active={naming} hint="Das lokale Modell überlegt sich einen Namen" />
           <input
             type="text"
             placeholder="Beschreibung (leer lassen = wird generiert)"
@@ -469,9 +497,12 @@ export default function Playlists() {
             onChange={(e) => setDescription(e.target.value)}
             style={{ display: "block", width: "100%", marginTop: "8px" }}
           />
-          <button className="btn-primary" onClick={handleCreate} style={{ marginTop: "8px" }}>
-            In VuIO anlegen
+          <button className="btn-primary" onClick={handleCreate} disabled={creating}
+                  style={{ marginTop: "8px" }}>
+            {creating ? "Wird angelegt..." : "In VuIO anlegen"}
           </button>
+          <Busy active={creating}
+                hint="Lege die Playlist in VuIO an und lasse Name und Beschreibung schreiben" />
         </div>
       )}
 
