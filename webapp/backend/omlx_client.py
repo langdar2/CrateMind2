@@ -3,6 +3,10 @@ import os
 
 import httpx
 
+# oMLX reads chat_template_kwargs, Ollama's OpenAI endpoint reads reasoning_effort;
+# each ignores the other's field.
+NO_THINKING = {"chat_template_kwargs": {"enable_thinking": False}, "reasoning_effort": "none"}
+
 # Live configuration: starts from the environment, and the LLM page replaces it
 # at runtime (see app.py), so a change needs no restart.
 _config = {
@@ -30,7 +34,7 @@ def _headers(api_key: str) -> dict:
 def _post(body: dict, timeout: float):
     # Reasoning models spend the whole token budget on a "thinking process"
     # before answering; every task here wants the answer only.
-    body = {**body, "model": _config["model"], "chat_template_kwargs": {"enable_thinking": False}}
+    body = {**body, "model": _config["model"], **NO_THINKING}
     return httpx.post(f"{_config['base_url']}/v1/chat/completions", json=body,
                       headers=_headers(_config["api_key"]), timeout=timeout)
 
@@ -54,7 +58,7 @@ def list_models(base_url: str, api_key: str) -> list:
 
 def test_completion(base_url: str, api_key: str, model: str) -> str:
     """One tiny completion with the given settings; returns the answer text."""
-    body = {"model": model, "max_tokens": 8, "chat_template_kwargs": {"enable_thinking": False}, "temperature": 0.0,
+    body = {"model": model, "max_tokens": 8, **NO_THINKING, "temperature": 0.0,
             "messages": [{"role": "user", "content": "Antworte nur mit: ok"}]}
     try:
         response = httpx.post(f"{base_url.rstrip('/')}/v1/chat/completions", json=body,
