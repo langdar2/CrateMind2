@@ -182,6 +182,10 @@ nicht aus Metadaten. Mit *Diese Künstler als Playlist* wandert die sichtbare
 Auswahl in den Playlists-Tab — und lässt sich dort speichern und wöchentlich
 neu befüllen wie jede andere Playlist.
 
+## Lokales LLM
+
+Im Tab „LLM" stellst du ein, welcher oMLX-Server und welches Modell für Namen, Beschreibungen, Prompt-Filter und das Nachbewerten genutzt wird: Server-Adresse, API-Key und Modell (die Liste kommt direkt vom Server). „Verbindung testen" prüft den Key, holt die Modellliste und lässt das Modell einmal antworten. Gespeichert wird in der Datenbank, die Änderung gilt sofort ohne Neustart. Der Key steht nur dort (nicht im Repo) und wird in der Oberfläche nie im Klartext angezeigt. Ohne gespeicherte Werte gelten `OMLX_BASE_URL`, `OMLX_MODEL` und `OMLX_API_KEY` aus der Umgebung.
+
 ## Abspielen
 
 ![Renderer](docs/images/renderers.jpg)

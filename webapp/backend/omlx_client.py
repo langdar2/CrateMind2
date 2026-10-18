@@ -3,8 +3,74 @@ import os
 
 import httpx
 
-OMLX_BASE_URL = os.environ.get("OMLX_BASE_URL", "http://192.168.0.3:8001")
-OMLX_MODEL = os.environ.get("OMLX_MODEL", "gemma-4-E4B-it-MLX-8bit")
+# Live configuration: starts from the environment, and the LLM page replaces it
+# at runtime (see app.py), so a change needs no restart.
+_config = {
+    "base_url": os.environ.get("OMLX_BASE_URL", "http://192.168.0.3:8001"),
+    "model": os.environ.get("OMLX_MODEL", "gemma-4-E4B-it-MLX-8bit"),
+    "api_key": os.environ.get("OMLX_API_KEY", ""),
+}
+
+
+def set_config(base_url=None, model=None, api_key=None) -> None:
+    """Replace the given settings; None leaves a setting as it is."""
+    for key, value in (("base_url", base_url), ("model", model), ("api_key", api_key)):
+        if value is not None:
+            _config[key] = value.strip().rstrip("/") if key == "base_url" else value.strip()
+
+
+def get_config() -> dict:
+    return dict(_config)
+
+
+def _headers(api_key: str) -> dict:
+    return {"Authorization": f"Bearer {api_key}"} if api_key else {}
+
+
+def _post(body: dict, timeout: float):
+    body = {**body, "model": _config["model"]}
+    return httpx.post(f"{_config['base_url']}/v1/chat/completions", json=body,
+                      headers=_headers(_config["api_key"]), timeout=timeout)
+
+
+def list_models(base_url: str, api_key: str) -> list:
+    """Model ids the server offers; raises OmlxError with a readable reason."""
+    try:
+        response = httpx.get(f"{base_url.rstrip('/')}/v1/models",
+                             headers=_headers(api_key), timeout=10.0)
+    except httpx.HTTPError as e:
+        raise OmlxError(f"Server nicht erreichbar: {e}") from e
+    if response.status_code in (401, 403):
+        raise OmlxError("API-Key fehlt oder ist falsch (HTTP %d)" % response.status_code)
+    if response.status_code != 200:
+        raise OmlxError(f"Server antwortete mit HTTP {response.status_code}")
+    try:
+        return [m["id"] for m in response.json()["data"]]
+    except (KeyError, TypeError, ValueError) as e:
+        raise OmlxError("Unerwartete Antwort der Modellliste") from e
+
+
+def test_completion(base_url: str, api_key: str, model: str) -> str:
+    """One tiny completion with the given settings; returns the answer text."""
+    body = {"model": model, "max_tokens": 8, "temperature": 0.0,
+            "messages": [{"role": "user", "content": "Antworte nur mit: ok"}]}
+    try:
+        response = httpx.post(f"{base_url.rstrip('/')}/v1/chat/completions", json=body,
+                              headers=_headers(api_key), timeout=60.0)
+    except httpx.HTTPError as e:
+        raise OmlxError(f"Server nicht erreichbar: {e}") from e
+    if response.status_code != 200:
+        try:
+            detail = response.json()
+            detail = detail.get("error", detail)
+            detail = detail.get("message", detail) if isinstance(detail, dict) else detail
+        except ValueError:
+            detail = response.text[:200]
+        raise OmlxError(f"HTTP {response.status_code}: {detail}")
+    try:
+        return response.json()["choices"][0]["message"]["content"].strip()
+    except (KeyError, IndexError, TypeError, ValueError) as e:
+        raise OmlxError("Unerwartete Antwort des Modells") from e
 
 from presets import FILTER_COLUMNS
 
@@ -123,7 +189,6 @@ def suggest_playlist_description(tracks: list) -> str:
     if not tracks:
         return None
     body = {
-        "model": OMLX_MODEL,
         "messages": [
             {"role": "system", "content": _DESCRIPTION_PROMPT},
             {"role": "user", "content": _describe_tracks_fully(tracks)},
@@ -132,7 +197,7 @@ def suggest_playlist_description(tracks: list) -> str:
         "temperature": 0.7,
     }
     try:
-        response = httpx.post(f"{OMLX_BASE_URL}/v1/chat/completions", json=body, timeout=30.0)
+        response = _post(body, 30.0)
         response.raise_for_status()
         text = response.json()["choices"][0]["message"]["content"]
     except (httpx.HTTPError, KeyError, IndexError, TypeError):
@@ -165,7 +230,6 @@ def rate_fit(theme: str, tracks: list) -> dict:
         for i, t in enumerate(tracks)
     )
     body = {
-        "model": OMLX_MODEL,
         "messages": [{"role": "user", "content": (
             f"Du bewertest Songs für eine Playlist. Thema: \"{theme}\".\n"
             "Gib für JEDEN Song eine ganze Zahl von 0 bis 10 an: wie gut er zum "
@@ -178,7 +242,7 @@ def rate_fit(theme: str, tracks: list) -> dict:
         "temperature": 0.0,
     }
     try:
-        response = httpx.post(f"{OMLX_BASE_URL}/v1/chat/completions", json=body, timeout=90.0)
+        response = _post(body, 90.0)
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
     except (httpx.HTTPError, KeyError, IndexError, TypeError):
@@ -212,7 +276,6 @@ def suggest_playlist_name(tracks: list) -> str:
     if not tracks:
         return None
     body = {
-        "model": OMLX_MODEL,
         "messages": [
             {"role": "system", "content": _NAME_PROMPT},
             {"role": "user", "content": _describe_tracks(tracks)},
@@ -222,7 +285,7 @@ def suggest_playlist_name(tracks: list) -> str:
         "temperature": 0.8,
     }
     try:
-        response = httpx.post(f"{OMLX_BASE_URL}/v1/chat/completions", json=body, timeout=20.0)
+        response = _post(body, 20.0)
         response.raise_for_status()
         name = response.json()["choices"][0]["message"]["content"]
     except (httpx.HTTPError, KeyError, IndexError, TypeError):
@@ -236,7 +299,6 @@ def suggest_playlist_name(tracks: list) -> str:
 
 def parse_prompt_to_criteria(prompt: str) -> dict:
     body = {
-        "model": OMLX_MODEL,
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
@@ -245,11 +307,11 @@ def parse_prompt_to_criteria(prompt: str) -> dict:
         "temperature": 0.0,
     }
     try:
-        response = httpx.post(f"{OMLX_BASE_URL}/v1/chat/completions", json=body, timeout=30.0)
+        response = _post(body, 30.0)
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
     except httpx.HTTPError as e:
-        raise OmlxError(f"oMLX unreachable at {OMLX_BASE_URL}: {e}") from e
+        raise OmlxError(f"oMLX unreachable at {_config['base_url']}: {e}") from e
     except (KeyError, IndexError, TypeError) as e:
         raise OmlxError(f"unexpected response shape from oMLX: {e}") from e
 

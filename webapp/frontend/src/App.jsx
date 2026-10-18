@@ -4,6 +4,7 @@ import Playlists from "./pages/Playlists.jsx";
 import Renderers from "./pages/Renderers.jsx";
 import Graph from "./pages/Graph.jsx";
 import Schedules from "./pages/Schedules.jsx";
+import Llm from "./pages/Llm.jsx";
 import StatusBar from "./components/StatusBar.jsx";
 
 const DashboardIcon = () => (
@@ -49,6 +50,15 @@ const ScheduleIcon = () => (
   </svg>
 );
 
+const LlmIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="5" y="5" width="14" height="14" rx="2" />
+    <rect x="9" y="9" width="6" height="6" />
+    <line x1="9" y1="2" x2="9" y2="5" /><line x1="15" y1="2" x2="15" y2="5" />
+    <line x1="9" y1="19" x2="9" y2="22" /><line x1="15" y1="19" x2="15" y2="22" />
+  </svg>
+);
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -67,6 +77,9 @@ export default function App() {
           <NavLink to="/graph" title="Klang-Graph">
             <GraphIcon />
           </NavLink>
+          <NavLink to="/llm" title="Lokales LLM">
+            <LlmIcon />
+          </NavLink>
           <NavLink to="/renderers" title="Renderer">
             <RendererIcon />
           </NavLink>
@@ -78,6 +91,7 @@ export default function App() {
               <Route path="/playlists" element={<Playlists />} />
               <Route path="/schedules" element={<Schedules />} />
               <Route path="/graph" element={<Graph />} />
+              <Route path="/llm" element={<Llm />} />
               <Route path="/renderers" element={<Renderers />} />
             </Routes>
           </main>

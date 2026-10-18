@@ -275,8 +275,27 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     recipe_columns = {row[1] for row in conn.execute("PRAGMA table_info(playlist_recipes)")}
     if recipe_columns and "description" not in recipe_columns:
         conn.execute("ALTER TABLE playlist_recipes ADD COLUMN description TEXT")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    )
     conn.commit()
     return conn
+
+
+def load_settings(conn: sqlite3.Connection, prefix: str) -> dict:
+    """All settings whose key starts with `prefix`, keyed without it."""
+    rows = conn.execute("SELECT key, value FROM settings WHERE key LIKE ?", (prefix + "%",))
+    return {key[len(prefix):]: value for key, value in rows}
+
+
+def save_settings(conn: sqlite3.Connection, prefix: str, values: dict) -> None:
+    for key, value in values.items():
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (prefix + key, value),
+        )
+    conn.commit()
 
 
 def record_play(conn: sqlite3.Connection, path: str, seconds: float, completed: bool) -> None:

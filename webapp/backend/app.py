@@ -142,6 +142,8 @@ async def run_schedules():
 async def lifespan(app: FastAPI):
     conn = db.get_connection(DB_PATH)
     app.state.conn = conn
+    saved = db.load_settings(conn, "llm.")
+    omlx_client.set_config(saved.get("base_url"), saved.get("model"), saved.get("api_key"))
     # Centroids over 33k embeddings are cheap but not free, so the track list
     # and the artist graph are held in memory and refreshed by watch_library
     # when the analysis service adds something.
@@ -159,6 +161,59 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+class LlmConfigRequest(BaseModel):
+    base_url: str
+    model: str
+    # None or empty keeps the stored key, so the masked field can be saved untouched.
+    api_key: Optional[str] = None
+
+
+class LlmTestRequest(BaseModel):
+    base_url: str
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+def _mask(key: str) -> str:
+    return "" if not key else (key[:5] + "…" + key[-3:] if len(key) > 10 else "…")
+
+
+@app.get("/api/llm/config")
+def get_llm_config():
+    cfg = omlx_client.get_config()
+    return {"base_url": cfg["base_url"], "model": cfg["model"],
+            "has_key": bool(cfg["api_key"]), "key_hint": _mask(cfg["api_key"])}
+
+
+@app.put("/api/llm/config")
+def put_llm_config(req: LlmConfigRequest):
+    if not req.base_url.strip().startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Adresse muss mit http:// oder https:// beginnen")
+    if not req.model.strip():
+        raise HTTPException(status_code=400, detail="Modell fehlt")
+    values = {"base_url": req.base_url.strip().rstrip("/"), "model": req.model.strip()}
+    if req.api_key:
+        values["api_key"] = req.api_key.strip()
+    omlx_client.set_config(**values)
+    db.save_settings(app.state.conn, "llm.", values)
+    return get_llm_config()
+
+
+@app.post("/api/llm/test")
+def test_llm(req: LlmTestRequest):
+    """List the server's models with the given (or stored) key, and, when a model is named, run one tiny completion."""
+    key = req.api_key or omlx_client.get_config()["api_key"]
+    result = {"models": [], "ok": False, "answer": None, "error": None}
+    try:
+        result["models"] = omlx_client.list_models(req.base_url, key)
+        if req.model:
+            result["answer"] = omlx_client.test_completion(req.base_url, key, req.model)
+        result["ok"] = True
+    except omlx_client.OmlxError as e:
+        result["error"] = str(e)
+    return result
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 

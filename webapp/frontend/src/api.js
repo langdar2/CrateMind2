@@ -70,3 +70,17 @@ export const runSchedule = (playlistId) =>
   request(`/schedules/${playlistId}/run`, { method: "POST" });
 export const getPlaybackStatus = (rendererId) =>
   request(`/playback-status${rendererId ? `?renderer_id=${encodeURIComponent(rendererId)}` : ""}`);
+
+export const getLlmConfig = () => request("/llm/config");
+export const saveLlmConfig = (body) =>
+  request("/llm/config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+export const testLlm = (body) =>
+  request("/llm/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });

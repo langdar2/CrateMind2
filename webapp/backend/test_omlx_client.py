@@ -162,7 +162,35 @@ def test_parse_prompt_to_criteria_raises_on_invalid_json():
             pass
 
 
+def test_requests_carry_the_configured_key_model_and_address():
+    saved = omlx_client.get_config()
+    omlx_client.set_config("http://x:1/", "m1", "secret")
+    try:
+        with patch("omlx_client.httpx.post", return_value=FakeResponse(_chat_payload("Name"))) as post:
+            omlx_client.suggest_playlist_name([{"display": {"artist": "A", "title": "T"}, "bpm": 100}])
+        assert post.call_args.args[0] == "http://x:1/v1/chat/completions"
+        assert post.call_args.kwargs["headers"] == {"Authorization": "Bearer secret"}
+        assert post.call_args.kwargs["json"]["model"] == "m1"
+    finally:
+        omlx_client.set_config(saved["base_url"], saved["model"], saved["api_key"])
+
+
+def test_list_models_reports_a_wrong_key_readably():
+    with patch("omlx_client.httpx.get", return_value=FakeResponse({}, 401)):
+        try:
+            omlx_client.list_models("http://x", "bad")
+        except omlx_client.OmlxError as e:
+            assert "API-Key" in str(e)
+        else:
+            raise AssertionError("expected OmlxError")
+    ok = FakeResponse({"data": [{"id": "a"}, {"id": "b"}]})
+    with patch("omlx_client.httpx.get", return_value=ok):
+        assert omlx_client.list_models("http://x", "k") == ["a", "b"]
+
+
 if __name__ == "__main__":
+    test_requests_carry_the_configured_key_model_and_address()
+    test_list_models_reports_a_wrong_key_readably()
     test_parse_prompt_to_criteria_parses_plain_json()
     test_parse_prompt_to_criteria_strips_markdown_fence()
     test_parse_prompt_to_criteria_drops_unknown_keys()

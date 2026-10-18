@@ -37,6 +37,26 @@ import typesafe_client
 import vuio_client
 
 
+def test_llm_config_persists_and_never_returns_the_key():
+    saved = app_module.omlx_client.get_config()
+    try:
+        with TestClient(app_module.app) as client:
+            r = client.put("/api/llm/config", json={
+                "base_url": "http://h:8001/", "model": "m", "api_key": "omlx-abcdefghijkl"})
+            assert r.status_code == 200
+            body = client.get("/api/llm/config").json()
+            assert body["base_url"] == "http://h:8001" and body["model"] == "m"
+            assert body["has_key"] and "abcdefghij" not in str(body)
+            # Saving without a key keeps the stored one.
+            client.put("/api/llm/config", json={"base_url": "http://h:8001", "model": "m2"})
+            assert app_module.omlx_client.get_config()["api_key"] == "omlx-abcdefghijkl"
+            assert client.put("/api/llm/config", json={"base_url": "h", "model": "m"}).status_code == 400
+        with TestClient(app_module.app):
+            assert app_module.omlx_client.get_config()["model"] == "m2"  # survives a restart
+    finally:
+        app_module.omlx_client.set_config(saved["base_url"], saved["model"], saved["api_key"])
+
+
 def test_rating_endpoint_persists_and_takes_effect_without_restart():
     with TestClient(app_module.app) as client:
         r = client.put("/api/ratings", json={"path": "/music/a.mp3", "rating": 1})
@@ -677,6 +697,7 @@ def test_retry_failed_endpoint_resets_failed_tracks():
 
 if __name__ == "__main__":
     test_stats_endpoint_returns_counts()
+    test_llm_config_persists_and_never_returns_the_key()
     test_tracks_search_endpoint()
     test_schedule_requires_a_recipe_to_refresh_from()
     test_schedule_rejects_impossible_times()
