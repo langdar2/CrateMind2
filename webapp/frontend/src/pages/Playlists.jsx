@@ -10,6 +10,7 @@ import {
   previewWishlist,
 } from "../api.js";
 import TrackLabel from "../components/TrackLabel.jsx";
+import { IconArrowDown, IconArrowUp } from "../components/Icons.jsx";
 import Busy from "../components/Busy.jsx";
 
 const MODES = [
@@ -393,7 +394,7 @@ export default function Playlists() {
 
         {mode === "seed" && (
           <div className="slider-row" style={{ marginTop: "12px" }}>
-            <span className="label">Klang ↔ Geschmack</span>
+            <span className="label">Klang / Geschmack</span>
             <input
               type="range"
               min="0"
@@ -473,8 +474,8 @@ export default function Playlists() {
                   </span>
                 </span>
                 <span style={{ display: "flex", gap: "4px" }}>
-                  <button onClick={() => moveTrack(i, -1)} disabled={i === 0}>↑</button>
-                  <button onClick={() => moveTrack(i, 1)} disabled={i === preview.length - 1}>↓</button>
+                  <button onClick={() => moveTrack(i, -1)} disabled={i === 0} aria-label="Nach oben"><IconArrowUp /></button>
+                  <button onClick={() => moveTrack(i, 1)} disabled={i === preview.length - 1} aria-label="Nach unten"><IconArrowDown /></button>
                   <button onClick={() => removeTrack(t.path)}>Entfernen</button>
                 </span>
               </li>

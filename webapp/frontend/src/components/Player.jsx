@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { coverUrl, streamUrl } from "../api.js";
-import { IconClose, IconNext, IconPause, IconPlay, IconPrev } from "./Icons.jsx";
+import { IconClose, IconNext, IconNote, IconPause, IconPlay, IconPrev } from "./Icons.jsx";
 
 const PlayerContext = createContext(null);
 export const usePlayer = () => useContext(PlayerContext);
@@ -128,7 +128,7 @@ export default function PlayerBar() {
         {hasCover ? (
           <img src={coverUrl(current.id)} alt="" onError={() => setCoverFailed(current.id)} />
         ) : (
-          <span>♪</span>
+          <IconNote />
         )}
       </div>
       <div className="player-meta">

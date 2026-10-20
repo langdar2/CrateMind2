@@ -38,3 +38,18 @@ export const IconUp = () => (
 export const IconBack = () => (
   <svg {...base}><polyline points="14 6 8 12 14 18" /></svg>
 );
+export const IconArrowUp = () => (
+  <svg {...base}><line x1="12" y1="19" x2="12" y2="5" /><polyline points="6 11 12 5 18 11" /></svg>
+);
+export const IconArrowDown = () => (
+  <svg {...base}><line x1="12" y1="5" x2="12" y2="19" /><polyline points="6 13 12 19 18 13" /></svg>
+);
+export const IconArrowRight = () => (
+  <svg {...base}><line x1="5" y1="12" x2="19" y2="12" /><polyline points="13 6 19 12 13 18" /></svg>
+);
+export const IconChevron = ({ open }) => (
+  <svg {...base} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }}><polyline points="9 6 15 12 9 18" /></svg>
+);
+export const IconNote = () => (
+  <svg {...base}><path d="M9 18V6l10-2v12" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="16.5" cy="16" r="2.5" /></svg>
+);

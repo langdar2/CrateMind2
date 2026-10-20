@@ -921,3 +921,9 @@ input[type="range"]:disabled {
 .library-device-text { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 
 .library-device-controls button { min-height: 0; }
+
+.status-now { display: inline-flex; align-items: center; gap: 8px; }
+.status-now svg { width: 1.2em; height: 1.2em; }
+.tile h3 svg { width: 1em; height: 1em; vertical-align: -0.15em; }
+.player-cover svg { width: 26px; height: 26px; }
+.card-row button { padding: 6px 12px; }

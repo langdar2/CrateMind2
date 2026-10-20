@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useInterval } from "../hooks.js";
 import { getStats, getNowPlaying } from "../api.js";
+import { IconArrowRight } from "./Icons.jsx";
 
 const POLL_MS = 3000;
 
@@ -32,7 +33,11 @@ export default function StatusBar() {
   return (
     <div className="status-bar">
       <span>
-        {activeRenderer ? `${activeRenderer.title || "Wiedergabe"} → ${activeRenderer.renderer}` : ""}
+        {activeRenderer && (
+          <span className="status-now">
+            {activeRenderer.title || "Wiedergabe"} <IconArrowRight /> {activeRenderer.renderer}
+          </span>
+        )}
       </span>
       <span>
         {analyzing && <span className="status-accent">Analyse: {progress}%</span>}
