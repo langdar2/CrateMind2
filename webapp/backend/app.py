@@ -774,12 +774,17 @@ def library_folders(path: Optional[str] = None, offset: int = 0):
                                            for r in _vuio(vuio_client.list_roots) if r.get("available", True)],
                 "tracks": [], "next_offset": None}
     page = _vuio(vuio_client.browse_folder, path, offset)
-    folders = [{"name": f.get("name"), "path": f.get("path")} for f in page.get("folders") or page.get("subfolders") or []]
+    # VuIO calls its subfolders "directories" and counts folders and files
+    # together in `total`, so the next page starts after everything seen so far.
+    folders = [{"name": f.get("name"), "path": f.get("path"), "count": f.get("file_count")}
+               for f in page.get("directories") or page.get("folders") or page.get("subfolders") or []]
     files = page.get("files") or []
     tracks = [vuio_client.track_summary(f) for f in files]
-    total = page.get("total_files") or page.get("total")
-    next_offset = offset + len(files) if files and total and offset + len(files) < total else None
-    return {"path": path, "folders": folders, "tracks": tracks, "next_offset": next_offset}
+    total = page.get("total") or page.get("total_files")
+    seen = offset + len(folders) + len(files)
+    next_offset = seen if (folders or files) and total and seen < total else None
+    return {"path": path, "parent": page.get("parent"), "folders": folders, "tracks": tracks,
+            "next_offset": next_offset}
 
 
 @app.get("/api/library/playlists")

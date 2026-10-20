@@ -87,6 +87,7 @@ export default function Library() {
   const [items, setItems] = useState(null);
   const [tracks, setTracks] = useState(null);
   const [folder, setFolder] = useState(null);
+  const [roots, setRoots] = useState([]); // library roots: going up from one returns to the list of roots
   const [filter, setFilter] = useState("");
   const [query, setQuery] = useState("");
   const [searchResult, setSearchResult] = useState(null);
@@ -129,7 +130,9 @@ export default function Library() {
         const r = await getVuioPlaylists();
         setItems(r.playlists.map((p) => ({ name: p.name, count: p.track_count, id: p.id, sub: p.description })));
       } else if (tab === "folder") {
-        setFolder(await browseFolder(null));
+        const top = await browseFolder(null);
+        setRoots(top.folders.map((f) => f.path));
+        setFolder(top);
       } else {
         const r = await getCategories(tab);
         setItems(r.items);
@@ -183,7 +186,6 @@ export default function Library() {
 
   const trackProps = { renderers, rendererId, onCastError: setError };
   const inDetail = stack.length > 0;
-  const parentPath = folder?.path && folder.path.includes("/") ? folder.path.replace(/\/[^/]+\/?$/, "") : null;
 
   return (
     <div className="library">
@@ -231,10 +233,14 @@ export default function Library() {
               <p className="library-path">{folder.path || "Medienordner"}</p>
               <ul className="folder-list">
                 {folder.path && (
-                  <li><button onClick={() => openFolder(parentPath && parentPath.length > 0 ? parentPath : null)}>↰ Eine Ebene hoch</button></li>
+                  <li><button onClick={() => openFolder(roots.includes(folder.path) || !folder.parent ? null : folder.parent)}>↰ Eine Ebene hoch</button></li>
                 )}
                 {folder.folders.map((f) => (
-                  <li key={f.path}><button onClick={() => openFolder(f.path)}>📁 {f.name}</button></li>
+                  <li key={f.path}>
+                    <button onClick={() => openFolder(f.path)}>
+                      📁 {f.name}{f.count != null && <span className="folder-count"> · {f.count}</span>}
+                    </button>
+                  </li>
                 ))}
               </ul>
               {folder.tracks.length > 0 && <TrackList tracks={folder.tracks} {...trackProps} />}

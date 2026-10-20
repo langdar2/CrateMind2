@@ -80,10 +80,13 @@ def test_library_endpoints_return_slim_sorted_tracks_and_categories():
             root = client.get("/api/library/folders").json()
         assert root["folders"] == [{"name": "Musik", "path": "/m"}]
 
-        page = {"folders": [{"name": "Sub", "path": "/m/Sub"}], "files": [_vuio_file(5)], "total_files": 3}
+        page = {"directories": [{"name": "Sub", "path": "/m/Sub", "file_count": 4}], "files": [_vuio_file(5)],
+                "total": 3, "parent": "/"}
         with patch.object(vuio_client, "_call_tool", return_value=page):
             body = client.get("/api/library/folders?path=/m").json()
-        assert body["folders"][0]["path"] == "/m/Sub" and body["next_offset"] == 1
+        # One folder and one file seen of three entries: the next page starts at 2.
+        assert body["folders"][0] == {"name": "Sub", "path": "/m/Sub", "count": 4}
+        assert body["next_offset"] == 2 and body["parent"] == "/"
 
         with patch.object(vuio_client, "_call_tool", side_effect=vuio_client.VuioError("down")):
             assert client.get("/api/library/search?q=abc").status_code == 502

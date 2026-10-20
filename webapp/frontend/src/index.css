@@ -885,3 +885,5 @@ input[type="range"]:disabled {
   .field-list .field > input,
   .field-list .field > select { max-width: none; }
 }
+
+.folder-count { color: var(--text-muted); font-weight: 400; }
