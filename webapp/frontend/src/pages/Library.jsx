@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getCategories, getArtistAlbums, getLibraryTracks, searchLibrary, browseFolder, getVuioPlaylists,
-  getVuioPlaylistTracks, getRenderers, castMedia, coverUrl, groupCoverUrl,
+  getVuioPlaylistTracks, getRenderers, playOnRenderer, controlRenderer, coverUrl, groupCoverUrl,
 } from "../api.js";
 import Busy from "../components/Busy.jsx";
 import { usePlayer, formatTime } from "../components/Player.jsx";
@@ -47,37 +47,70 @@ function Cover({ id, src, name, className = "" }) {
 
 function TrackList({ tracks, renderers, rendererId, onCastError, heading }) {
   const player = usePlayer();
-  const [castingId, setCastingId] = useState(null);
-  const [castNote, setCastNote] = useState(null);
+  const [starting, setStarting] = useState(false);
+  const [onDevice, setOnDevice] = useState(null); // {label} while something we started plays there
 
-  const cast = async (track) => {
-    setCastingId(track.id);
-    setCastNote(null);
+  const device = renderers.find((r) => r.id === rendererId);
+  const deviceLabel = device ? rendererLabel(device, renderers) : null;
+
+  // With a device chosen, every play button plays there; otherwise in this browser.
+  const play = async (list, index = 0) => {
+    if (!rendererId) {
+      player.playQueue(list, index);
+      return;
+    }
+    player.stop(); // never both at once
+    setStarting(true);
+    setOnDevice(null);
     try {
-      await castMedia(track.id, rendererId);
-      const device = renderers.find((r) => r.id === rendererId);
-      setCastNote(`„${track.title}" läuft auf ${device ? rendererLabel(device, renderers) : "dem Gerät"}`);
+      // VuIO takes at most 500 tracks in one go; send the window around the one tapped.
+      const offset = Math.max(0, Math.min(index, list.length - 500));
+      const window = list.slice(offset, offset + 500);
+      await playOnRenderer(window.map((t) => t.id), rendererId, index - offset);
+      setOnDevice({ label: deviceLabel, title: list[index].title });
     } catch (e) {
       onCastError(e.message);
     } finally {
-      setCastingId(null);
+      setStarting(false);
+    }
+  };
+
+  const control = async (action) => {
+    try {
+      await controlRenderer(action, rendererId);
+      if (action === "stop") setOnDevice(null);
+    } catch (e) {
+      onCastError(e.message);
     }
   };
 
   if (!tracks.length) return <p>Keine Titel gefunden.</p>;
+  const shuffled = () => [...tracks].sort(() => Math.random() - 0.5);
   return (
     <div>
       <div className="library-actions">
-        <button className="btn-primary" onClick={() => player.playQueue(tracks, 0)}>▶ Alle abspielen</button>
-        <button onClick={() => player.playQueue([...tracks].sort(() => Math.random() - 0.5), 0)}>🔀 Zufällig</button>
-        <button onClick={() => player.enqueue(tracks)}>＋ Warteschlange</button>
+        <button className="btn-primary" disabled={starting} onClick={() => play(tracks, 0)}>
+          ▶ Alle abspielen{deviceLabel ? ` auf ${device.friendly_name}` : ""}
+        </button>
+        <button disabled={starting} onClick={() => play(shuffled(), 0)}>🔀 Zufällig</button>
+        {!rendererId && <button onClick={() => player.enqueue(tracks)}>＋ Warteschlange</button>}
         <span className="library-count">{heading ?? `${tracks.length} Titel`}</span>
       </div>
-      {castNote && <p className="library-note">{castNote}</p>}
+      {starting && <Busy active hint={`Starte auf ${deviceLabel}`} />}
+      {onDevice && (
+        <div className="library-device-now">
+          <span>📡 „{onDevice.title}" läuft auf {onDevice.label}</span>
+          <span className="library-device-controls">
+            <button onClick={() => control("pause")}>⏸</button>
+            <button onClick={() => control("play")}>▶</button>
+            <button onClick={() => control("stop")}>⏹</button>
+          </span>
+        </div>
+      )}
       <ul className="track-list">
         {tracks.map((t, i) => (
           <li key={t.id} className={player.current?.id === t.id ? "track-row is-current" : "track-row"}>
-            <button className="track-main" onClick={() => player.playQueue(tracks, i)}>
+            <button className="track-main" disabled={starting} onClick={() => play(tracks, i)}>
               <Cover id={t.id} name={t.album || t.title} className="cover-sm" />
               <span className="track-text">
                 <span className="track-title">{t.title}</span>
@@ -90,10 +123,6 @@ function TrackList({ tracks, renderers, rendererId, onCastError, heading }) {
               </span>
               <span className="track-time">{t.duration ? formatTime(t.duration) : ""}</span>
             </button>
-            {rendererId && (
-              <button className="track-cast" title="Auf dem gewählten Gerät abspielen"
-                      disabled={castingId === t.id} onClick={() => cast(t)}>📡</button>
-            )}
           </li>
         ))}
       </ul>
@@ -257,7 +286,7 @@ export default function Library() {
           <div className="library-renderer">
             <span className="label">Gerät</span>
             <select value={rendererId} onChange={(e) => chooseRenderer(e.target.value)}>
-              <option value="">Nur in diesem Browser</option>
+              <option value="">In diesem Browser abspielen</option>
               {[...renderers]
                 .sort((a, b) => rendererLabel(a, renderers).localeCompare(rendererLabel(b, renderers), "de"))
                 .map((r) => <option key={r.id} value={r.id}>{rendererLabel(r, renderers)}</option>)}

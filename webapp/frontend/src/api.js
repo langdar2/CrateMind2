@@ -102,6 +102,8 @@ export const browseFolder = (path, offset = 0) =>
   request(`/library/folders?${qs({ path, offset: offset || null })}`);
 export const getVuioPlaylists = () => request("/library/playlists");
 export const getVuioPlaylistTracks = (id) => request(`/library/playlists/${id}`);
+export const playOnRenderer = (fileIds, rendererId, start = 0) =>
+  request("/library/play", jsonBody({ file_ids: fileIds, renderer_id: rendererId, start }));
 export const castMedia = (fileId, rendererId) =>
   request("/library/cast", jsonBody({ file_id: fileId, renderer_id: rendererId }));
 export const controlRenderer = (action, rendererId) =>

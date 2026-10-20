@@ -192,6 +192,20 @@ def test_albums_of_an_artist_come_from_vuio_and_of_an_album_artist_are_grouped()
         assert client.get("/api/library/albums").status_code == 400
 
 
+def test_play_endpoint_validates_and_passes_the_start_position():
+    with TestClient(app_module.app) as client:
+        with patch.object(vuio_client, "play_on_renderer", return_value={"ok": True}) as play:
+            r = client.post("/api/library/play", json={"file_ids": [1, 2, 3], "renderer_id": "r1", "start": 2})
+        assert r.status_code == 200 and play.call_args.args == ([1, 2, 3], "r1", 2)
+        assert client.post("/api/library/play", json={"file_ids": [], "renderer_id": "r1"}).status_code == 400
+        with patch.object(vuio_client, "play_on_renderer", side_effect=vuio_client.VuioError("offline")):
+            assert client.post("/api/library/play", json={"file_ids": [1], "renderer_id": "r1"}).status_code == 502
+        queue = [{"id": 1, "name": "Mix"}, {"id": 2, "name": "CrateMind Wiedergabe (r1)"}]
+        with patch.object(vuio_client, "list_playlists", return_value=queue):
+            names = [p["name"] for p in client.get("/api/library/playlists").json()["playlists"]]
+        assert names == ["Mix"]  # the app's own queue playlists are not shown as the user's
+
+
 def test_rating_endpoint_persists_and_takes_effect_without_restart():
     with TestClient(app_module.app) as client:
         r = client.put("/api/ratings", json={"path": "/music/a.mp3", "rating": 1})
@@ -832,6 +846,7 @@ def test_retry_failed_endpoint_resets_failed_tracks():
 
 if __name__ == "__main__":
     test_stats_endpoint_returns_counts()
+    test_play_endpoint_validates_and_passes_the_start_position()
     test_albums_of_an_artist_come_from_vuio_and_of_an_album_artist_are_grouped()
     test_client_side_routes_fall_back_to_the_app_but_missing_files_stay_404()
     test_group_cover_uses_the_first_track_and_404s_without_one()

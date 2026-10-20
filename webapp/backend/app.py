@@ -818,12 +818,26 @@ def library_playlists():
         {"id": p["id"], "name": p.get("name") or f"Playlist {p['id']}",
          "description": p.get("description"), "track_count": p.get("track_count")}
         for p in _vuio(vuio_client.list_playlists)
+        if not (p.get("name") or "").startswith(vuio_client.PLAY_QUEUE_PREFIX)
     ]}
 
 
 @app.get("/api/library/playlists/{playlist_id}")
 def library_playlist(playlist_id: int):
     return {"tracks": [vuio_client.track_summary(f) for f in _vuio(vuio_client.playlist_tracks, playlist_id)]}
+
+
+class PlayOnRequest(BaseModel):
+    file_ids: list[int]
+    renderer_id: str
+    start: int = 0
+
+
+@app.post("/api/library/play")
+def library_play(req: PlayOnRequest):
+    if not req.file_ids or len(req.file_ids) > 500:
+        raise HTTPException(status_code=400, detail="give between 1 and 500 tracks")
+    return _vuio(vuio_client.play_on_renderer, req.file_ids, req.renderer_id, req.start)
 
 
 class CastMediaRequest(BaseModel):

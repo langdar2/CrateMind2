@@ -311,3 +311,39 @@ def media_url(file_id: int, kind: str) -> str:
         raise VuioError(f"no {kind} for media {file_id}")
     path = "/" + source.split("://", 1)[-1].split("/", 1)[-1] if "://" in source else source
     return VUIO_BASE_URL.rstrip("/") + path
+
+
+PLAY_QUEUE_PREFIX = "CrateMind Wiedergabe"
+
+
+def play_on_renderer(file_ids: list, renderer_id: str, start: int = 0) -> dict:
+    """Play a list of tracks on a device, beginning at position `start`.
+
+    VuIO plays playlists, not ad-hoc lists, so the tracks go into a playlist of
+    their own, one per device. It is built before the old one is removed: the
+    old one may still be what the device is playing, and a failed cast must
+    leave things as they were.
+    """
+    if not file_ids:
+        raise VuioError("nothing to play")
+    start = max(0, min(start, len(file_ids) - 1))
+    name = f"{PLAY_QUEUE_PREFIX} ({renderer_id})"
+    created = _call_tool("create_playlist", {"name": name, "description": "Von CrateMind angelegt, wird beim nächsten Abspielen ersetzt"})
+    try:
+        playlist_id = created["playlist_id"]
+    except (KeyError, TypeError) as e:
+        raise VuioError(f"unexpected response shape from VuIO for tool 'create_playlist': {e}") from e
+    try:
+        _call_tool("add_to_playlist", {"playlist_id": playlist_id, "media_file_ids": file_ids})
+        result = _call_tool("cast_playlist_to_renderer",
+                            {"playlist_id": playlist_id, "renderer_id": renderer_id, "track_index": start})
+    except VuioError:
+        _call_tool("delete_playlist", {"playlist_id": playlist_id})
+        raise
+    for old in list_playlists():
+        if old.get("name") == name and old.get("id") != playlist_id:
+            try:
+                _call_tool("delete_playlist", {"playlist_id": old["id"]})
+            except VuioError:
+                pass  # a leftover playlist is clutter, not a failure
+    return result if isinstance(result, dict) else {}

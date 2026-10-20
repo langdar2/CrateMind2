@@ -219,6 +219,49 @@ def test_create_playlist_raises_vuio_error_on_malformed_response():
             pass
 
 
+def test_play_on_renderer_builds_a_queue_casts_from_the_start_and_replaces_the_old_one():
+    calls = []
+
+    def fake(name, arguments, timeout=10.0):
+        calls.append((name, arguments))
+        if name == "create_playlist":
+            return {"playlist_id": 9}
+        if name == "list_playlists":
+            return {"playlists": [{"id": 4, "name": "CrateMind Wiedergabe (r1)"}, {"id": 9, "name": "CrateMind Wiedergabe (r1)"},
+                                  {"id": 5, "name": "Mein Mix"}]}
+        return {}
+
+    with patch.object(vuio_client, "_call_tool", side_effect=fake):
+        vuio_client.play_on_renderer([11, 12, 13], "r1", start=2)
+    names = [c[0] for c in calls]
+    assert names.index("add_to_playlist") < names.index("cast_playlist_to_renderer") < names.index("delete_playlist")
+    cast = dict(calls)["cast_playlist_to_renderer"]
+    assert cast == {"playlist_id": 9, "renderer_id": "r1", "track_index": 2}
+    deleted = [a["playlist_id"] for n, a in calls if n == "delete_playlist"]
+    assert deleted == [4]  # the previous queue only: not the new one, not the user's playlists
+
+
+def test_play_on_renderer_cleans_up_when_the_cast_fails():
+    calls = []
+
+    def fake(name, arguments, timeout=10.0):
+        calls.append(name)
+        if name == "create_playlist":
+            return {"playlist_id": 9}
+        if name == "cast_playlist_to_renderer":
+            raise vuio_client.VuioError("device offline")
+        return {}
+
+    with patch.object(vuio_client, "_call_tool", side_effect=fake):
+        try:
+            vuio_client.play_on_renderer([1], "r1")
+        except vuio_client.VuioError:
+            pass
+        else:
+            raise AssertionError("expected VuioError")
+    assert calls[-1] == "delete_playlist"
+
+
 if __name__ == "__main__":
     test_call_tool_parses_structured_content()
     test_call_tool_parses_text_content_fallback()
@@ -236,4 +279,6 @@ if __name__ == "__main__":
     test_replace_playlist_tracks_removes_old_then_adds_new()
     test_replace_playlist_tracks_keeps_old_contents_if_a_track_is_missing()
     test_create_playlist_raises_vuio_error_on_malformed_response()
+    test_play_on_renderer_builds_a_queue_casts_from_the_start_and_replaces_the_old_one()
+    test_play_on_renderer_cleans_up_when_the_cast_fails()
     print("All vuio_client tests passed.")
