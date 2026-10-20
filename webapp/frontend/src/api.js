@@ -84,3 +84,27 @@ export const testLlm = (body) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+
+const jsonBody = (body) => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+const qs = (params) =>
+  new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== "")).toString();
+
+export const getCategories = (kind, params = {}) =>
+  request(`/library/categories?${qs({ kind, ...params })}`);
+export const getLibraryTracks = (params) => request(`/library/tracks?${qs(params)}`);
+export const searchLibrary = (q) => request(`/library/search?${qs({ q })}`);
+export const browseFolder = (path, offset = 0) =>
+  request(`/library/folders?${qs({ path, offset: offset || null })}`);
+export const getVuioPlaylists = () => request("/library/playlists");
+export const getVuioPlaylistTracks = (id) => request(`/library/playlists/${id}`);
+export const castMedia = (fileId, rendererId) =>
+  request("/library/cast", jsonBody({ file_id: fileId, renderer_id: rendererId }));
+export const controlRenderer = (action, rendererId) =>
+  request("/library/control", jsonBody({ action, renderer_id: rendererId }));
+export const coverUrl = (id) => `${BASE}/media/${id}/cover`;
+export const streamUrl = (id) => `${BASE}/media/${id}/stream`;
+export const groupCoverUrl = (params) => `${BASE}/library/cover?${qs(params)}`;

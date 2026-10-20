@@ -199,3 +199,115 @@ def all_playback_status() -> dict:
     with ThreadPoolExecutor(max_workers=8) as pool:
         groups = pool.map(probe, renderers)
     return {"renderers": [entry for group in groups for entry in group]}
+
+
+def list_roots() -> list:
+    result = _call_tool("list_library_roots", {})
+    try:
+        return result["roots"]
+    except (KeyError, TypeError) as e:
+        raise VuioError(f"unexpected response shape from VuIO for tool 'list_library_roots': {e}") from e
+
+
+def browse_folder(path: str, offset: int = 0, limit: int = 200) -> dict:
+    return _call_tool("browse_folder", {"path": path, "category": "audio", "offset": offset, "limit": limit})
+
+
+def list_categories(kind: str, artist: str = None, genre: str = None) -> list:
+    """[{name, count}] for artists, albums, genres or years, from VuIO's index."""
+    arguments = {"kind": kind}
+    if artist:
+        arguments["artist"] = artist
+    if genre:
+        arguments["genre"] = genre
+    result = _call_tool("list_music_categories", arguments)
+    # The exact envelope is VuIO's to choose: take the first list in it, and
+    # accept the usual spellings for the name and the count.
+    items = result if isinstance(result, list) else next(
+        (v for v in result.values() if isinstance(v, list)), []) if isinstance(result, dict) else []
+    out = []
+    for item in items:
+        if isinstance(item, str):
+            out.append({"name": item, "count": None})
+        elif isinstance(item, dict):
+            name = next((item[k] for k in ("name", "value", "label", kind) if item.get(k) not in (None, "")), None)
+            count = next((item[k] for k in ("track_count", "count", "tracks") if k in item), None)
+            if name is not None:
+                out.append({"name": str(name), "count": count})
+    return out
+
+
+def find_music(artist: str = None, album: str = None, album_artist: str = None,
+               genre: str = None, year: int = None, limit: int = 500) -> list:
+    arguments = {"limit": limit}
+    for key, value in (("artist", artist), ("album", album), ("album_artist", album_artist),
+                       ("genre", genre), ("year", year)):
+        if value not in (None, ""):
+            arguments[key] = value
+    result = _call_tool("find_music", arguments)
+    return _files_of(result)
+
+
+def search_audio(query: str, limit: int = 50) -> list:
+    return _files_of(_call_tool("search_media", {"query": query, "category": "audio", "limit": limit}))
+
+
+def playlist_tracks(playlist_id: int) -> list:
+    return _files_of(_call_tool("get_playlist_tracks", {"playlist_id": playlist_id}))
+
+
+def _files_of(result) -> list:
+    if isinstance(result, list):
+        return result
+    if isinstance(result, dict):
+        for key in ("tracks", "files", "results"):
+            if isinstance(result.get(key), list):
+                return result[key]
+    return []
+
+
+def media_info(file_id: int) -> dict:
+    info = _call_tool("get_media_info", {"file_id": file_id})
+    if not isinstance(info, dict):
+        raise VuioError(f"unexpected response shape from VuIO for tool 'get_media_info'")
+    return info
+
+
+def cast_media(file_id: int, renderer_id: str) -> dict:
+    return _call_tool("cast_media_to_renderer", {"file_id": file_id, "renderer_id": renderer_id})
+
+
+def control_renderer(action: str, renderer_id: str = None) -> dict:
+    arguments = {"action": action}
+    if renderer_id:
+        arguments["renderer_id"] = renderer_id
+    return _call_tool("control_renderer", arguments)
+
+
+def track_summary(file: dict) -> dict:
+    """The few fields the browser needs; VuIO's records are large."""
+    return {
+        "id": file.get("id"),
+        "title": file.get("title") or (file.get("filename") or "").rsplit(".", 1)[0],
+        "artist": file.get("artist"),
+        "album": file.get("album"),
+        "album_artist": file.get("album_artist"),
+        "track_number": file.get("track_number"),
+        "disc_number": file.get("disc_number"),
+        "duration": file.get("duration_seconds") or None,
+        "year": file.get("year"),
+        "genre": file.get("genre"),
+        "codec": file.get("codec"),
+    }
+
+
+def media_url(file_id: int, kind: str) -> str:
+    """VuIO's own URL for a track's audio ('stream') or artwork ('cover'),
+    rebuilt on our configured base so it works whatever address VuIO
+    advertises for itself."""
+    info = media_info(file_id)
+    source = info.get("stream_url" if kind == "stream" else "cover_url")
+    if not source:
+        raise VuioError(f"no {kind} for media {file_id}")
+    path = "/" + source.split("://", 1)[-1].split("/", 1)[-1] if "://" in source else source
+    return VUIO_BASE_URL.rstrip("/") + path

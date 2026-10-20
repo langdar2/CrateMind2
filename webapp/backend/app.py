@@ -6,7 +6,9 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+import httpx
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -727,6 +729,175 @@ def playback_status(renderer_id: Optional[str] = None):
         return vuio_client.get_playback_status(renderer_id)
     except vuio_client.VuioError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+# --- Browsing and streaming VuIO's library ---------------------------------
+
+def _vuio(call, *args, **kwargs):
+    try:
+        return call(*args, **kwargs)
+    except vuio_client.VuioError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/api/library/categories")
+def library_categories(kind: str, artist: Optional[str] = None, genre: Optional[str] = None):
+    if kind not in ("artist", "album", "album_artist", "genre", "year"):
+        raise HTTPException(status_code=400, detail="unknown kind")
+    return {"items": _vuio(vuio_client.list_categories, kind, artist, genre)}
+
+
+@app.get("/api/library/tracks")
+def library_tracks(artist: Optional[str] = None, album: Optional[str] = None,
+                   album_artist: Optional[str] = None, genre: Optional[str] = None,
+                   year: Optional[int] = None):
+    if not any([artist, album, album_artist, genre, year]):
+        raise HTTPException(status_code=400, detail="give at least one filter")
+    files = _vuio(vuio_client.find_music, artist, album, album_artist, genre, year)
+    tracks = [vuio_client.track_summary(f) for f in files]
+    # Album order first, then the order within a disc.
+    tracks.sort(key=lambda t: (t["album"] or "", t["disc_number"] or 1, t["track_number"] or 0))
+    return {"tracks": tracks}
+
+
+@app.get("/api/library/search")
+def library_search(q: str):
+    if len(q.strip()) < 2:
+        return {"tracks": []}
+    return {"tracks": [vuio_client.track_summary(f) for f in _vuio(vuio_client.search_audio, q.strip())]}
+
+
+@app.get("/api/library/folders")
+def library_folders(path: Optional[str] = None, offset: int = 0):
+    if not path:
+        return {"path": None, "folders": [{"name": r.get("name"), "path": r.get("path")}
+                                           for r in _vuio(vuio_client.list_roots) if r.get("available", True)],
+                "tracks": [], "next_offset": None}
+    page = _vuio(vuio_client.browse_folder, path, offset)
+    folders = [{"name": f.get("name"), "path": f.get("path")} for f in page.get("folders") or page.get("subfolders") or []]
+    files = page.get("files") or []
+    tracks = [vuio_client.track_summary(f) for f in files]
+    total = page.get("total_files") or page.get("total")
+    next_offset = offset + len(files) if files and total and offset + len(files) < total else None
+    return {"path": path, "folders": folders, "tracks": tracks, "next_offset": next_offset}
+
+
+@app.get("/api/library/playlists")
+def library_playlists():
+    return {"playlists": [
+        {"id": p["id"], "name": p.get("name") or f"Playlist {p['id']}",
+         "description": p.get("description"), "track_count": p.get("track_count")}
+        for p in _vuio(vuio_client.list_playlists)
+    ]}
+
+
+@app.get("/api/library/playlists/{playlist_id}")
+def library_playlist(playlist_id: int):
+    return {"tracks": [vuio_client.track_summary(f) for f in _vuio(vuio_client.playlist_tracks, playlist_id)]}
+
+
+class CastMediaRequest(BaseModel):
+    file_id: int
+    renderer_id: str
+
+
+@app.post("/api/library/cast")
+def library_cast(req: CastMediaRequest):
+    return _vuio(vuio_client.cast_media, req.file_id, req.renderer_id)
+
+
+class ControlRequest(BaseModel):
+    action: str
+    renderer_id: Optional[str] = None
+
+
+@app.post("/api/library/control")
+def library_control(req: ControlRequest):
+    if req.action not in ("play", "pause", "stop"):
+        raise HTTPException(status_code=400, detail="unknown action")
+    return _vuio(vuio_client.control_renderer, req.action, req.renderer_id)
+
+
+# Where a track's bytes live on VuIO changes only when the library does.
+_media_urls = {}
+
+
+async def _proxy_media(file_id: int, kind: str, request: Request):
+    """Pass VuIO's audio or cover through, Range requests included.
+
+    The browser could use VuIO's URL directly, but that only works while the
+    device can reach VuIO and VuIO advertises an address it can use; a phone
+    on the same network, or behind a proxy, often cannot. Seeking needs the
+    Range header, so it is forwarded and VuIO's 206 answer returned as is.
+    """
+    key = (file_id, kind)
+    if key not in _media_urls:
+        try:
+            _media_urls[key] = await asyncio.to_thread(vuio_client.media_url, file_id, kind)
+        except vuio_client.VuioError as e:
+            # A track without artwork is normal, not a gateway failure.
+            raise HTTPException(status_code=404 if kind == "cover" else 502, detail=str(e)) from e
+    headers = {k: v for k, v in (("Range", request.headers.get("range")),) if v}
+    if vuio_client.VUIO_TOKEN:
+        headers["Authorization"] = f"Bearer {vuio_client.VUIO_TOKEN}"
+    client = httpx.AsyncClient(timeout=httpx.Timeout(15.0, read=None))
+    try:
+        upstream = await client.send(client.build_request("GET", _media_urls[key], headers=headers), stream=True)
+    except httpx.HTTPError as e:
+        await client.aclose()
+        _media_urls.pop(key, None)
+        raise HTTPException(status_code=502, detail=f"VuIO unreachable: {e}") from e
+    if upstream.status_code >= 400:
+        await upstream.aclose()
+        await client.aclose()
+        _media_urls.pop(key, None)
+        raise HTTPException(status_code=404 if kind == "cover" else 502, detail=f"VuIO answered {upstream.status_code}")
+
+    async def body():
+        try:
+            async for chunk in upstream.aiter_raw():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+
+    passthrough = {k: v for k, v in upstream.headers.items()
+                   if k.lower() in ("content-type", "content-length", "content-range", "accept-ranges")}
+    if kind == "cover":
+        passthrough["Cache-Control"] = "public, max-age=86400"
+    return StreamingResponse(body(), status_code=upstream.status_code, headers=passthrough)
+
+
+# Which track stands in for an album or artist on the grids.
+_cover_tracks = {}
+
+
+@app.get("/api/library/cover")
+async def library_cover(request: Request, album: Optional[str] = None, artist: Optional[str] = None):
+    """Artwork for a whole album or artist: the cover of its first track.
+
+    The grids show hundreds of albums, so the browser asks for these lazily,
+    one image at a time, as they scroll into view.
+    """
+    if not album and not artist:
+        raise HTTPException(status_code=400, detail="give an album or an artist")
+    key = (album, artist)
+    if key not in _cover_tracks:
+        files = await asyncio.to_thread(_vuio, vuio_client.find_music, artist, album, None, None, None, 1)
+        _cover_tracks[key] = files[0].get("id") if files else None
+    if _cover_tracks[key] is None:
+        raise HTTPException(status_code=404, detail="nothing found")
+    return await _proxy_media(_cover_tracks[key], "cover", request)
+
+
+@app.get("/api/media/{file_id}/stream")
+async def media_stream(file_id: int, request: Request):
+    return await _proxy_media(file_id, "stream", request)
+
+
+@app.get("/api/media/{file_id}/cover")
+async def media_cover(file_id: int, request: Request):
+    return await _proxy_media(file_id, "cover", request)
 
 
 class FrontendFiles(StaticFiles):

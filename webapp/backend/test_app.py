@@ -57,6 +57,98 @@ def test_llm_config_persists_and_never_returns_the_key():
         app_module.omlx_client.set_config(saved["base_url"], saved["model"], saved["api_key"])
 
 
+def _vuio_file(i, **extra):
+    return {"id": i, "title": f"T{i}", "artist": "A", "album": "Alb", "track_number": i,
+            "duration_seconds": 200.0, "codec": "flac", "path": "/x", "size_bytes": 5, **extra}
+
+
+def test_library_endpoints_return_slim_sorted_tracks_and_categories():
+    cats = {"artists": [{"name": "Broilers", "track_count": 40}, {"name": "Apoc", "track_count": 3}]}
+    with TestClient(app_module.app) as client:
+        with patch.object(vuio_client, "_call_tool", return_value=cats):
+            items = client.get("/api/library/categories?kind=artist").json()["items"]
+        assert items[0] == {"name": "Broilers", "count": 40}
+        assert client.get("/api/library/categories?kind=nope").status_code == 400
+
+        files = {"tracks": [_vuio_file(2), _vuio_file(1)]}
+        with patch.object(vuio_client, "_call_tool", return_value=files):
+            tracks = client.get("/api/library/tracks?album=Alb").json()["tracks"]
+        assert [t["id"] for t in tracks] == [1, 2] and "path" not in tracks[0]
+        assert client.get("/api/library/tracks").status_code == 400
+
+        with patch.object(vuio_client, "_call_tool", return_value={"roots": [{"name": "Musik", "path": "/m", "available": True}]}):
+            root = client.get("/api/library/folders").json()
+        assert root["folders"] == [{"name": "Musik", "path": "/m"}]
+
+        page = {"folders": [{"name": "Sub", "path": "/m/Sub"}], "files": [_vuio_file(5)], "total_files": 3}
+        with patch.object(vuio_client, "_call_tool", return_value=page):
+            body = client.get("/api/library/folders?path=/m").json()
+        assert body["folders"][0]["path"] == "/m/Sub" and body["next_offset"] == 1
+
+        with patch.object(vuio_client, "_call_tool", side_effect=vuio_client.VuioError("down")):
+            assert client.get("/api/library/search?q=abc").status_code == 502
+        assert client.get("/api/library/search?q=a").json() == {"tracks": []}
+
+
+def test_media_url_is_rebuilt_on_the_configured_base_and_streams_with_ranges():
+    info = {"stream_url": "http://192.168.0.54:8080/media/7.flac", "cover_url": None}
+    with patch.object(vuio_client, "_call_tool", return_value=info):
+        assert vuio_client.media_url(7, "stream") == vuio_client.VUIO_BASE_URL.rstrip("/") + "/media/7.flac"
+        try:
+            vuio_client.media_url(7, "cover")
+        except vuio_client.VuioError:
+            pass
+        else:
+            raise AssertionError("a track without artwork must raise")
+
+    seen = {}
+
+    class FakeUpstream:
+        status_code = 206
+        headers = {"content-type": "audio/flac", "content-range": "bytes 0-3/10", "x-secret": "no"}
+
+        async def aiter_raw(self):
+            yield b"abcd"
+
+        async def aclose(self):
+            pass
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def build_request(self, method, url, headers=None):
+            seen["url"], seen["headers"] = url, headers
+            return object()
+
+        async def send(self, request, stream=False):
+            return FakeUpstream()
+
+        async def aclose(self):
+            pass
+
+    app_module._media_urls.clear()
+    with TestClient(app_module.app) as client, \
+            patch.object(vuio_client, "media_url", return_value="http://vuio/media/7.flac"), \
+            patch.object(app_module.httpx, "AsyncClient", FakeClient):
+        r = client.get("/api/media/7/stream", headers={"Range": "bytes=0-3"})
+    assert r.status_code == 206 and r.content == b"abcd"
+    assert seen["headers"]["Range"] == "bytes=0-3"
+    assert r.headers["content-range"] == "bytes 0-3/10" and "x-secret" not in r.headers
+
+
+def test_group_cover_uses_the_first_track_and_404s_without_one():
+    app_module._cover_tracks.clear()
+    with TestClient(app_module.app) as client:
+        assert client.get("/api/library/cover").status_code == 400
+        with patch.object(vuio_client, "find_music", return_value=[]):
+            assert client.get("/api/library/cover?album=Nope").status_code == 404
+        with patch.object(vuio_client, "find_music", return_value=[{"id": 9}]), \
+                patch.object(app_module, "_proxy_media", return_value=app_module.Response(b"img")) as proxy:
+            r = client.get("/api/library/cover?artist=Broilers")
+        assert r.content == b"img" and proxy.call_args.args[:2] == (9, "cover")
+
+
 def test_rating_endpoint_persists_and_takes_effect_without_restart():
     with TestClient(app_module.app) as client:
         r = client.put("/api/ratings", json={"path": "/music/a.mp3", "rating": 1})
@@ -697,6 +789,9 @@ def test_retry_failed_endpoint_resets_failed_tracks():
 
 if __name__ == "__main__":
     test_stats_endpoint_returns_counts()
+    test_group_cover_uses_the_first_track_and_404s_without_one()
+    test_library_endpoints_return_slim_sorted_tracks_and_categories()
+    test_media_url_is_rebuilt_on_the_configured_base_and_streams_with_ranges()
     test_llm_config_persists_and_never_returns_the_key()
     test_tracks_search_endpoint()
     test_schedule_requires_a_recipe_to_refresh_from()

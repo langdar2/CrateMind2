@@ -5,6 +5,8 @@ import Renderers from "./pages/Renderers.jsx";
 import Graph from "./pages/Graph.jsx";
 import Schedules from "./pages/Schedules.jsx";
 import Llm from "./pages/Llm.jsx";
+import Library from "./pages/Library.jsx";
+import PlayerBar, { PlayerProvider } from "./components/Player.jsx";
 import StatusBar from "./components/StatusBar.jsx";
 
 const DashboardIcon = () => (
@@ -59,14 +61,26 @@ const LlmIcon = () => (
   </svg>
 );
 
+const LibraryIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="3" />
+    <line x1="12" y1="3" x2="12" y2="1" />
+  </svg>
+);
+
 export default function App() {
   return (
     <BrowserRouter>
+      <PlayerProvider>
       <div className="app-shell">
         <nav className="sidebar">
           <div className="brand" />
           <NavLink to="/" end title="Dashboard">
             <DashboardIcon />
+          </NavLink>
+          <NavLink to="/library" title="Bibliothek">
+            <LibraryIcon />
           </NavLink>
           <NavLink to="/playlists" title="Playlists">
             <PlaylistIcon />
@@ -88,6 +102,7 @@ export default function App() {
           <main>
             <Routes>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/library" element={<Library />} />
               <Route path="/playlists" element={<Playlists />} />
               <Route path="/schedules" element={<Schedules />} />
               <Route path="/graph" element={<Graph />} />
@@ -98,6 +113,8 @@ export default function App() {
           <StatusBar />
         </div>
       </div>
+      <PlayerBar />
+      </PlayerProvider>
     </BrowserRouter>
   );
 }

@@ -59,6 +59,14 @@ Angabe nicht, findet CrateMind die Tracks in VuIO nicht wieder.
 Das lokale LLM und der Smart-Modus sind optional. Fällt eines aus, funktioniert
 alles andere weiter.
 
+## Bibliothek
+
+Der Tab „Bibliothek" blättert durch den VuIO-Bestand und spielt Titel direkt im Browser ab. Es gibt Künstler, Alben, Genres, VuIO-Playlists und die Ordneransicht, dazu eine Suche über Titel, Künstler und Album. Ein Tipp auf einen Titel startet ihn, „Alle abspielen", „Zufällig" und „Warteschlange" arbeiten ganze Listen ab. Der Player bleibt beim Seitenwechsel aktiv, spult, und zeigt auf dem Handy Titel und Cover auch auf dem Sperrbildschirm samt Kopfhörertasten.
+
+Wählst du oben ein Gerät, startet das 📡 neben einem Titel ihn stattdessen auf diesem DLNA-/AirPlay-Gerät (die Auswahl wird gemerkt).
+
+Audio und Cover laufen durch die Webapp (`/api/media/<id>/stream`, `/cover`) statt direkt von VuIO. So funktioniert es auch auf dem Handy, das VuIOs eigene Adresse nicht erreichen muss. Spulen geht über Range-Anfragen. Die Oberfläche passt sich Handys an: Navigation unten, große Tippflächen, Player als Karte über der Leiste.
+
 ## Playlists bauen
 
 ![Playlists](docs/images/playlists.jpg)
