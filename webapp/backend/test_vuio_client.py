@@ -262,7 +262,46 @@ def test_play_on_renderer_cleans_up_when_the_cast_fails():
     assert calls[-1] == "delete_playlist"
 
 
+def _items(*pairs):
+    return [{"name": n, "count": c} for n, c in pairs]
+
+
+def test_guest_credits_fold_into_the_lead_artist_when_the_lead_exists():
+    items = _items(("Darude", 3), ("Darude, Zans", 1), ("Darude, lau.ra", 1), ("Darude feat. Sebastian Rejman", 2))
+    folded = vuio_client.fold_artists(items)
+    assert folded == [{"name": "Darude", "count": 7,
+                       "variants": ["Darude", "Darude, Zans", "Darude, lau.ra", "Darude feat. Sebastian Rejman"]}]
+
+
+def test_names_that_merely_contain_a_comma_or_ampersand_stay_whole():
+    items = _items(("Earth, Wind & Fire", 5), ("Simon & Garfunkel", 4), ("Crosby, Stills, Nash & Young", 3))
+    names = [g["name"] for g in vuio_client.fold_artists(items)]
+    # "Earth" / "Crosby" are no artists of their own in this library, "&" never splits.
+    assert names == ["Crosby, Stills, Nash & Young", "Earth, Wind & Fire", "Simon & Garfunkel"]
+
+
+def test_a_guest_without_a_lead_in_the_library_is_not_invented_as_one():
+    folded = vuio_client.fold_artists(_items(("Zans, Darude", 1), ("Darude", 3)))
+    # "Zans" is not an artist here, so "Zans, Darude" is kept as it is.
+    assert sorted(g["name"] for g in folded) == ["Darude", "Zans, Darude"]
+
+
+def test_lead_matching_ignores_case_and_keeps_the_library_spelling():
+    folded = vuio_client.fold_artists(_items(("Darude", 3), ("darude, Zans", 1)))
+    assert folded == [{"name": "Darude", "count": 4, "variants": ["Darude", "darude, Zans"]}]
+
+
+def test_unknown_counts_stay_unknown_instead_of_becoming_a_wrong_sum():
+    folded = vuio_client.fold_artists(_items(("Darude", None), ("Darude, Zans", 1)))
+    assert folded[0]["count"] is None
+
+
 if __name__ == "__main__":
+    test_guest_credits_fold_into_the_lead_artist_when_the_lead_exists()
+    test_names_that_merely_contain_a_comma_or_ampersand_stay_whole()
+    test_a_guest_without_a_lead_in_the_library_is_not_invented_as_one()
+    test_lead_matching_ignores_case_and_keeps_the_library_spelling()
+    test_unknown_counts_stay_unknown_instead_of_becoming_a_wrong_sum()
     test_call_tool_parses_structured_content()
     test_call_tool_parses_text_content_fallback()
     test_call_tool_raises_vuio_error_on_jsonrpc_error()

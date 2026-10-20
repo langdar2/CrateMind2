@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
@@ -347,3 +348,40 @@ def play_on_renderer(file_ids: list, renderer_id: str, start: int = 0) -> dict:
             except VuioError:
                 pass  # a leftover playlist is clutter, not a failure
     return result if isinstance(result, dict) else {}
+
+
+_GUEST_SPLIT = re.compile(r"\s*,\s*|\s+(?:feat\.?|ft\.?|featuring)\s+", re.IGNORECASE)
+
+
+def main_artist_of(name: str, known: set) -> str:
+    """The lead artist behind a credit like "Darude, Zans" or "X feat. Y".
+
+    The first name counts as the lead only when it is an artist in the library
+    in its own right, which keeps band names that contain a comma ("Earth, Wind
+    & Fire") whole. "&" is not treated as a separator: "Simon & Garfunkel"
+    is one act, and splitting it would invent a "Simon".
+    """
+    parts = _GUEST_SPLIT.split(name, maxsplit=1)
+    if len(parts) == 2 and parts[0] and parts[0].lower() in known:
+        return known[parts[0].lower()] if isinstance(known, dict) else parts[0]
+    return name
+
+
+def fold_artists(items: list) -> list:
+    """Merge guest credits into their lead artist.
+
+    items: [{name, count}]. Returns [{name, count, variants}], where `variants`
+    lists every credit name that was folded in (the lead's own name included),
+    so a lookup can ask VuIO for each of them.
+    """
+    known = {i["name"].lower(): i["name"] for i in items}
+    groups = {}
+    for item in items:
+        lead = main_artist_of(item["name"], known)
+        g = groups.setdefault(lead, {"name": lead, "count": 0, "variants": []})
+        if item["count"] is not None and g["count"] is not None:
+            g["count"] += item["count"]
+        elif item["count"] is None:
+            g["count"] = None
+        g["variants"].append(item["name"])
+    return sorted(groups.values(), key=lambda g: g["name"].lower())

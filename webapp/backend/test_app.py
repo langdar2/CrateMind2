@@ -65,9 +65,10 @@ def _vuio_file(i, **extra):
 def test_library_endpoints_return_slim_sorted_tracks_and_categories():
     cats = {"artists": [{"name": "Broilers", "track_count": 40}, {"name": "Apoc", "track_count": 3}]}
     with TestClient(app_module.app) as client:
+        app_module._artist_groups.update(at=0.0, items=[], variants={})
         with patch.object(vuio_client, "_call_tool", return_value=cats):
             items = client.get("/api/library/categories?kind=artist").json()["items"]
-        assert items[0] == {"name": "Broilers", "count": 40}
+        assert {"name": "Broilers", "count": 40} in items and items[0]["name"] == "Apoc"  # alphabetical
         assert client.get("/api/library/categories?kind=nope").status_code == 400
 
         files = {"tracks": [_vuio_file(2), _vuio_file(1)]}
@@ -204,6 +205,31 @@ def test_play_endpoint_validates_and_passes_the_start_position():
         with patch.object(vuio_client, "list_playlists", return_value=queue):
             names = [p["name"] for p in client.get("/api/library/playlists").json()["playlists"]]
         assert names == ["Mix"]  # the app's own queue playlists are not shown as the user's
+
+
+def test_artists_list_folds_guests_and_their_tracks_and_albums_are_merged():
+    app_module._artist_groups.update(at=0.0, items=[], variants={})
+    cats = {"categories": [{"name": "Darude", "track_count": 3}, {"name": "Darude, Zans", "track_count": 1}]}
+
+    def fake(name, arguments, timeout=10.0):
+        if name == "list_music_categories":
+            if arguments["kind"] == "artist":
+                return cats
+            return {"categories": [{"name": "Remixes" if arguments["artist"] == "Darude, Zans" else "Sandstorm",
+                                    "track_count": 1}]}
+        if name == "find_music":
+            return {"tracks": [_vuio_file(1 if arguments["artist"] == "Darude" else 2, artist=arguments["artist"])]}
+        return {}
+
+    with TestClient(app_module.app) as client, patch.object(vuio_client, "_call_tool", side_effect=fake):
+        items = client.get("/api/library/categories?kind=artist").json()["items"]
+        assert items == [{"name": "Darude", "count": 4}]
+        tracks = client.get("/api/library/tracks?artist=Darude").json()["tracks"]
+        assert sorted(t["id"] for t in tracks) == [1, 2]
+        albums = client.get("/api/library/albums?artist=Darude").json()["albums"]
+        assert [a["name"] for a in albums] == ["Remixes", "Sandstorm"]
+        # An artist that was never folded still resolves to itself.
+        assert app_module._artist_variants("Niemand") == ["Niemand"]
 
 
 def test_rating_endpoint_persists_and_takes_effect_without_restart():
@@ -846,6 +872,7 @@ def test_retry_failed_endpoint_resets_failed_tracks():
 
 if __name__ == "__main__":
     test_stats_endpoint_returns_counts()
+    test_artists_list_folds_guests_and_their_tracks_and_albums_are_merged()
     test_play_endpoint_validates_and_passes_the_start_position()
     test_albums_of_an_artist_come_from_vuio_and_of_an_album_artist_are_grouped()
     test_client_side_routes_fall_back_to_the_app_but_missing_files_stay_404()

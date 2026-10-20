@@ -2,6 +2,7 @@ import asyncio
 import os
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
@@ -741,10 +742,53 @@ def _vuio(call, *args, **kwargs):
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
+ARTIST_GROUPS_TTL = 300
+_artist_groups = {"at": 0.0, "items": [], "variants": {}}
+
+
+def _folded_artists():
+    """Artists with guest credits folded into their lead, cached for a few minutes.
+
+    VuIO matches artists by their exact tag, so "Darude, Zans" is a different
+    artist from "Darude". Folding needs the whole list, which is a few
+    thousand names - cheap to hold, worth not fetching on every tap.
+    """
+    if time.time() - _artist_groups["at"] > ARTIST_GROUPS_TTL or not _artist_groups["items"]:
+        items = vuio_client.fold_artists(vuio_client.list_categories("artist"))
+        _artist_groups.update(at=time.time(), items=items,
+                              variants={g["name"]: g["variants"] for g in items})
+    return _artist_groups
+
+
+def _artist_variants(name: str) -> list:
+    try:
+        return _folded_artists()["variants"].get(name) or [name]
+    except vuio_client.VuioError:
+        return [name]
+
+
+def _find_for_artist(artist: str, album, album_artist, genre, year) -> list:
+    """Tracks credited to an artist or to any guest credit folded into them."""
+    variants = _artist_variants(artist)
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        batches = list(pool.map(
+            lambda a: vuio_client.find_music(a, album, album_artist, genre, year), variants))
+    seen, files = set(), []
+    for batch in batches:
+        for f in batch:
+            if f.get("id") not in seen:
+                seen.add(f.get("id"))
+                files.append(f)
+    return files
+
+
 @app.get("/api/library/categories")
 def library_categories(kind: str, artist: Optional[str] = None, genre: Optional[str] = None):
     if kind not in ("artist", "album", "album_artist", "genre", "year"):
         raise HTTPException(status_code=400, detail="unknown kind")
+    if kind == "artist" and not artist and not genre:
+        groups = _vuio(_folded_artists)["items"]
+        return {"items": [{"name": g["name"], "count": g["count"]} for g in groups]}
     return {"items": _vuio(vuio_client.list_categories, kind, artist, genre)}
 
 
@@ -754,7 +798,10 @@ def library_tracks(artist: Optional[str] = None, album: Optional[str] = None,
                    year: Optional[int] = None):
     if not any([artist, album, album_artist, genre, year]):
         raise HTTPException(status_code=400, detail="give at least one filter")
-    files = _vuio(vuio_client.find_music, artist, album, album_artist, genre, year)
+    if artist:
+        files = _vuio(_find_for_artist, artist, album, album_artist, genre, year)
+    else:
+        files = _vuio(vuio_client.find_music, artist, album, album_artist, genre, year)
     tracks = [vuio_client.track_summary(f) for f in files]
     # Album order first, then the order within a disc.
     tracks.sort(key=lambda t: (t["album"] or "", t["disc_number"] or 1, t["track_number"] or 0))
@@ -770,7 +817,12 @@ def library_albums(artist: Optional[str] = None, album_artist: Optional[str] = N
     out at most 500 of those, which `complete` says when it may have cut off.
     """
     if artist:
-        items = _vuio(vuio_client.list_categories, "album", artist)
+        merged = {}
+        for variant in _artist_variants(artist):
+            for item in _vuio(vuio_client.list_categories, "album", variant):
+                m = merged.setdefault(item["name"], {"name": item["name"], "count": 0})
+                m["count"] = None if item["count"] is None or m["count"] is None else m["count"] + item["count"]
+        items = sorted(merged.values(), key=lambda x: x["name"].lower())
         return {"albums": items, "complete": True}
     if album_artist:
         files = _vuio(vuio_client.find_music, None, None, album_artist)
