@@ -152,6 +152,21 @@ def test_group_cover_uses_the_first_track_and_404s_without_one():
         assert r.content == b"img" and proxy.call_args.args[:2] == (9, "cover")
 
 
+def test_client_side_routes_fall_back_to_the_app_but_missing_files_stay_404():
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as d:
+        (Path(d) / "index.html").write_text("<html>app</html>")
+        (Path(d) / "assets").mkdir()
+        from fastapi import FastAPI
+        spa = FastAPI()
+        spa.mount("/", app_module.FrontendFiles(directory=d, html=True))
+        client = TestClient(spa)
+        r = client.get("/library")
+        assert r.status_code == 200 and "app" in r.text and r.headers["cache-control"] == "no-cache"
+        assert client.get("/assets/missing.js").status_code == 404
+
+
 def test_rating_endpoint_persists_and_takes_effect_without_restart():
     with TestClient(app_module.app) as client:
         r = client.put("/api/ratings", json={"path": "/music/a.mp3", "rating": 1})
@@ -792,6 +807,7 @@ def test_retry_failed_endpoint_resets_failed_tracks():
 
 if __name__ == "__main__":
     test_stats_endpoint_returns_counts()
+    test_client_side_routes_fall_back_to_the_app_but_missing_files_stay_404()
     test_group_cover_uses_the_first_track_and_404s_without_one()
     test_library_endpoints_return_slim_sorted_tracks_and_categories()
     test_media_url_is_rebuilt_on_the_configured_base_and_streams_with_ranges()

@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel
 
 import db
@@ -919,7 +920,15 @@ class FrontendFiles(StaticFiles):
     """
 
     async def get_response(self, path, scope):
-        response = await super().get_response(path, scope)
+        # The pages are client-side routes: reloading /library or opening a
+        # bookmark must still get the app, which then shows that page. Files
+        # with an extension (a missing asset) stay a real 404.
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as e:
+            if e.status_code != 404 or "." in path.rsplit("/", 1)[-1]:
+                raise
+            response = await super().get_response("index.html", scope)
         if response.status_code in (200, 304):
             immutable = path.startswith("assets/")
             response.headers["Cache-Control"] = (
