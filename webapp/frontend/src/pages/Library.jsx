@@ -15,6 +15,19 @@ const TABS = [
   { key: "folder", label: "Ordner" },
 ];
 
+const PROTOCOLS = { airplay: "AirPlay", chromecast: "Chromecast", dlna: "DLNA" };
+
+// "Evo One · AirPlay": devices often share a name across protocols, so the
+// protocol is what tells them apart (and the model, when two still collide).
+function rendererLabel(r, all) {
+  const name = r.friendly_name || r.name || r.id;
+  const protocol = PROTOCOLS[r.protocol] || r.protocol;
+  const label = protocol ? `${name} · ${protocol}` : name;
+  const clash = all.some((o) => o !== r && (o.friendly_name || o.name) === (r.friendly_name || r.name)
+    && o.protocol === r.protocol);
+  return clash && r.model ? `${label} (${r.model})` : label;
+}
+
 const PALETTE = ["#ff9966", "#ffcc66", "#cc99cc", "#6699cc", "#9999cc", "#ffcc99"];
 const colourFor = (name) => PALETTE[[...name].reduce((n, c) => n + c.charCodeAt(0), 0) % PALETTE.length];
 
@@ -42,7 +55,8 @@ function TrackList({ tracks, renderers, rendererId, onCastError, heading }) {
     setCastNote(null);
     try {
       await castMedia(track.id, rendererId);
-      setCastNote(`„${track.title}" läuft auf ${renderers.find((r) => r.id === rendererId)?.name || "dem Gerät"}`);
+      const device = renderers.find((r) => r.id === rendererId);
+      setCastNote(`„${track.title}" läuft auf ${device ? rendererLabel(device, renderers) : "dem Gerät"}`);
     } catch (e) {
       onCastError(e.message);
     } finally {
@@ -211,7 +225,9 @@ export default function Library() {
             <span className="label">Gerät</span>
             <select value={rendererId} onChange={(e) => chooseRenderer(e.target.value)}>
               <option value="">Nur in diesem Browser</option>
-              {renderers.map((r) => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}
+              {[...renderers]
+                .sort((a, b) => rendererLabel(a, renderers).localeCompare(rendererLabel(b, renderers), "de"))
+                .map((r) => <option key={r.id} value={r.id}>{rendererLabel(r, renderers)}</option>)}
             </select>
           </div>
         )}
