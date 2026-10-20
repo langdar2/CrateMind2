@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>CrateMind – Design-Beispiel: LCARS × Solid Glass</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&display=swap');
+
+/*
+ * Beispiel, keine Produktivdatei. Zwei Ideen gemischt:
+ *  - LCARS bleibt die Identität: Antonio, Versalien, Pillen, die Farbpalette,
+ *    asymmetrische Ecken, die Winkel-Seitenleiste.
+ *  - Solid Glass liefert das Material: ruhiger neutraler Grund, dicke raucherne
+ *    Scheiben, der Glanz sitzt am Rand (Lichtkante oben + Haarlinie + Schatten
+ *    darunter), nie ein Verlauf über der Fläche. Farbe nur als Akzent.
+ */
+:root {
+  --lcars-orange: #ff9966;
+  --lcars-peach: #ffcc99;
+  --lcars-gold: #ffcc66;
+  --lcars-lilac: #cc99cc;
+  --lcars-periwinkle: #9999cc;
+  --lcars-blue: #6699cc;
+  --lcars-ice: #99ccff;
+
+  --page: oklch(0.16 0 0);
+  --ink: oklch(0.985 0 0);
+  --ink-soft: oklch(0.74 0 0);
+  --ink-mute: oklch(0.58 0 0);
+
+  /* Dicke: panel < card < popover */
+  --panel: oklch(1 0 0 / 4.5%);
+  --card: oklch(0.31 0 0 / 46%);
+  --popover: oklch(0.22 0 0 / 96%);
+
+  /* Der Abschluss am Rand */
+  --rim: oklch(1 0 0 / 16%);
+  --inner: oklch(1 0 0 / 4%);
+  --edge: oklch(1 0 0 / 7%);
+  --shade: oklch(0 0 0 / 60%);
+  --contact: oklch(0 0 0 / 10%);
+  --control: oklch(1 0 0 / 7%);
+  --control-rim: oklch(1 0 0 / 12%);
+  --field: oklch(1 0 0 / 6%);
+  --field-rim: oklch(1 0 0 / 15%);
+  --blur: blur(26px);
+
+  --accent: var(--lcars-orange);
+}
+
+* { box-sizing: border-box; }
+html { background: var(--page); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Antonio", "Arial Narrow", sans-serif;
+  color: var(--ink);
+  background: var(--page);
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 0; }
+
+/* ---- Scheibe: das eine Material ------------------------------------------ */
+.pane {
+  background: var(--card);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow:
+    inset 0 1px 0 var(--rim),          /* Lichtkante oben */
+    inset 0 0 0 1px var(--edge),       /* Haarlinie rundum */
+    inset 0 2px 0 var(--inner),        /* zweite, schwache Linie darunter */
+    0 1px 2px var(--contact),
+    0 18px 38px -14px var(--shade);    /* Schatten sammelt sich unten */
+}
+
+/* ---- Layout --------------------------------------------------------------- */
+.shell { display: flex; gap: 10px; padding: 10px; min-height: 100vh; }
+
+/* Seitenleiste: LCARS-Winkel, aber als Glas mit orangefarbener Tönung */
+.nav {
+  width: 92px; flex-shrink: 0;
+  border-radius: 44px 10px 10px 44px;
+  padding: 18px 0;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  background:
+    linear-gradient(oklch(0.72 0.13 45 / 22%), oklch(0.72 0.13 45 / 22%)),
+    var(--card);
+}
+.nav .brand {
+  width: 52px; height: 52px; border-radius: 50%; margin-bottom: 12px;
+  background: oklch(0.1 0 0);
+  box-shadow: inset 0 1px 0 var(--rim), inset 0 0 0 2px oklch(0.78 0.13 50 / 70%), 0 6px 14px -4px var(--shade);
+}
+.nav a {
+  width: 62px; height: 44px; border-radius: 22px;
+  display: grid; place-items: center; color: var(--lcars-peach);
+  background: var(--control);
+  box-shadow: inset 0 1px 0 var(--control-rim), inset 0 0 0 1px var(--edge);
+  transition: background .15s;
+}
+.nav a:hover { background: oklch(1 0 0 / 12%); }
+/* Der eine Zustand: aktiv = massive, hell gerandete Scheibe in Akzentfarbe */
+.nav a.active {
+  color: oklch(0.14 0 0);
+  background: var(--lcars-orange);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 55%), inset 0 -2px 0 oklch(0 0 0 / 22%), 0 6px 14px -4px oklch(0.6 0.15 45 / 55%);
+}
+.nav svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding-bottom: 130px; }
+
+/* ---- Kachel: LCARS-Ecke + Akzentstreifen, Material = Scheibe ----------------- */
+.tile {
+  --tint: var(--lcars-orange);
+  position: relative;
+  border-radius: 34px 12px 12px 34px;
+  padding: 18px 20px 20px 30px;
+  overflow: hidden;
+}
+.tile:nth-of-type(2n) { --tint: var(--lcars-lilac); }
+.tile:nth-of-type(3n) { --tint: var(--lcars-blue); }
+/* der LCARS-Balken: ein farbiges Glas-Band am linken Rand statt eines Rahmens */
+.tile::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 12px;
+  background: var(--tint);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 45%), inset -2px 0 0 oklch(0 0 0 / 18%);
+}
+.tile h3 {
+  display: inline-block; margin-bottom: 14px; padding: 4px 18px; font-size: 15px;
+  border-radius: 999px; color: oklch(0.14 0 0); background: var(--tint);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 50%), inset 0 -2px 0 oklch(0 0 0 / 20%);
+}
+
+/* ---- Felder, Knöpfe, Chips: kleines klares Glas -------------------------------- */
+.field, .btn, .tab, .chip {
+  font-family: inherit; color: var(--ink); text-transform: uppercase; letter-spacing: .6px;
+}
+.field {
+  width: 100%; height: 46px; padding: 0 20px; font-size: 16px; border: 0; outline: 0;
+  border-radius: 999px; background: var(--field);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  box-shadow: inset 0 1px 0 var(--field-rim), inset 0 0 0 1px var(--edge), inset 0 3px 8px oklch(0 0 0 / 28%);
+}
+.field::placeholder { color: var(--ink-mute); }
+.field:focus { box-shadow: inset 0 1px 0 var(--field-rim), inset 0 0 0 1.5px oklch(1 0 0 / 40%), inset 0 3px 8px oklch(0 0 0 / 28%); }
+
+.btn, .tab {
+  height: 44px; padding: 0 20px; font-size: 15px; font-weight: 600; border: 0; cursor: pointer;
+  border-radius: 999px; background: var(--control);
+  box-shadow: inset 0 1px 0 var(--control-rim), inset 0 0 0 1px var(--edge), 0 1px 2px var(--contact);
+  transition: background .15s, transform .05s;
+}
+.btn:hover, .tab:hover { background: oklch(1 0 0 / 12%); }
+.btn:active { transform: translateY(1px); }
+/* Primär: massive Scheibe in der LCARS-Farbe, oben hell, unten schattiert */
+.btn.primary, .tab.on {
+  color: oklch(0.14 0 0); background: var(--accent);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 55%), inset 0 -2px 0 oklch(0 0 0 / 22%), inset 0 0 0 1px oklch(1 0 0 / 14%), 0 8px 16px -6px oklch(0.6 0.15 45 / 55%);
+}
+.btn.primary:hover { background: oklch(0.8 0.13 45); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.stack { display: grid; gap: 12px; }
+
+.chip {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 12px; font-size: 12px; font-weight: 600;
+  border-radius: 999px; background: var(--control); color: var(--ink-soft);
+  box-shadow: inset 0 1px 0 var(--control-rim), inset 0 0 0 1px var(--edge);
+}
+.chip.hot { color: oklch(0.14 0 0); background: var(--lcars-gold); box-shadow: inset 0 1px 0 oklch(1 0 0 / 50%), inset 0 -1px 0 oklch(0 0 0 / 20%); }
+
+/* ---- Alben-Raster ---------------------------------------------------------- */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; margin-top: 16px; }
+.album { display: grid; gap: 7px; }
+.cover {
+  aspect-ratio: 1; border-radius: 18px 5px 18px 5px; position: relative;
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 40%), inset 0 0 0 1px oklch(1 0 0 / 14%), 0 14px 22px -10px oklch(0 0 0 / 80%);
+}
+.cover i { position: absolute; inset: 22%; border-radius: 50%; background: oklch(0 0 0 / 38%); box-shadow: inset 0 1px 0 oklch(1 0 0 / 25%); }
+.album b { font-size: 15px; font-weight: 600; text-transform: uppercase; line-height: 1.15; letter-spacing: .5px; }
+.album small { font-size: 12px; color: var(--ink-mute); letter-spacing: .5px; text-transform: uppercase; }
+
+/* ---- Titelliste ------------------------------------------------------------- */
+.tracks { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 4px; }
+.track {
+  display: flex; align-items: center; gap: 14px; padding: 8px 12px 8px 8px; min-height: 60px;
+  border-radius: 14px 4px 4px 14px; background: transparent;
+}
+.track:hover { background: var(--control); box-shadow: inset 0 1px 0 var(--control-rim), inset 0 0 0 1px var(--edge); }
+/* Der eine Zustand: laufend = dieselbe kleine Glasscheibe + LCARS-Marker */
+.track.now { background: var(--control); box-shadow: inset 0 1px 0 var(--control-rim), inset 0 0 0 1px var(--edge), inset 5px 0 0 var(--lcars-orange); }
+.track .cover { width: 46px; flex-shrink: 0; border-radius: 10px 3px 10px 3px; box-shadow: inset 0 1px 0 oklch(1 0 0 / 40%), inset 0 0 0 1px oklch(1 0 0 / 12%); }
+.track .cover i { inset: 24%; }
+.track .t { flex: 1; min-width: 0; display: grid; }
+.track .t b { font-size: 17px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track .t small { font-size: 13px; color: var(--ink-soft); letter-spacing: .5px; text-transform: uppercase; }
+.track time { font-size: 13px; color: var(--ink-mute); font-variant-numeric: tabular-nums; }
+.eq { display: inline-flex; gap: 3px; align-items: flex-end; height: 16px; margin-right: 4px; }
+.eq span { width: 3px; background: var(--lcars-orange); border-radius: 2px; animation: eq 1s ease-in-out infinite; }
+.eq span:nth-child(2) { animation-delay: .2s; } .eq span:nth-child(3) { animation-delay: .4s; }
+@keyframes eq { 0%,100% { height: 4px } 50% { height: 16px } }
+
+/* ---- Slider: Nut mit Knauf ---------------------------------------------------- */
+.slider { display: grid; grid-template-columns: 110px 1fr 52px; gap: 14px; align-items: center; margin-top: 6px; }
+.slider span { font-size: 14px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .6px; }
+.slider output { font-size: 15px; text-align: right; color: var(--lcars-gold); }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 12px; border-radius: 999px; background: oklch(0 0 0 / 32%);
+  box-shadow: inset 0 2px 4px oklch(0 0 0 / 55%), 0 1px 0 oklch(1 0 0 / 9%); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 26px; border-radius: 50%; border: 0;
+  background: oklch(0.97 0 0); box-shadow: inset 0 1px 0 #fff, 0 4px 10px oklch(0 0 0 / 55%), 0 0 0 1px oklch(0 0 0 / 25%); }
+input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border-radius: 50%; border: 0; background: oklch(0.97 0 0); box-shadow: 0 4px 10px oklch(0 0 0 / 55%); }
+
+/* ---- Busy-Anzeige: Kernzelle ist weiter ein LCARS-Balken ---------------------- */
+.busy { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-radius: 6px 18px 18px 6px; background: var(--panel);
+  box-shadow: inset 0 1px 0 var(--rim), inset 0 0 0 1px var(--edge), inset 4px 0 0 var(--lcars-gold); }
+.busy .bars { display: flex; gap: 4px; }
+.busy .bars i { width: 18px; height: 14px; border-radius: 7px; background: var(--lcars-orange); opacity: .25; animation: sweep 1.1s ease-in-out infinite;
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 40%); }
+.busy .bars i:nth-child(3n+2) { background: var(--lcars-gold); } .busy .bars i:nth-child(3n) { background: var(--lcars-lilac); }
+@keyframes sweep { 0%,100% { opacity: .25; transform: scaleY(.7) } 30% { opacity: 1; transform: scaleY(1.2) } 60% { opacity: .4; transform: scaleY(.85) } }
+.busy span { font-size: 13px; letter-spacing: .6px; text-transform: uppercase; color: var(--ink-soft); }
+
+/* ---- Player: die dickste Scheibe ---------------------------------------------- */
+.player {
+  position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 5;
+  display: grid; grid-template-columns: 58px minmax(0, 1fr) auto minmax(160px, 320px); gap: 16px; align-items: center;
+  padding: 10px 22px 10px 12px; border-radius: 999px 22px 22px 999px;
+  background: oklch(0.22 0 0 / 82%);
+}
+.player .cover { border-radius: 50%; width: 58px; background: var(--lcars-lilac); }
+.player .t b { display: block; font-size: 17px; letter-spacing: .5px; text-transform: uppercase; }
+.player .t small { font-size: 13px; color: var(--ink-soft); letter-spacing: .5px; text-transform: uppercase; }
+.player .ctl { display: flex; gap: 6px; align-items: center; }
+.player .ctl .btn { width: 46px; padding: 0; display: grid; place-items: center; font-size: 17px; }
+.player .ctl .btn.primary { width: 58px; }
+.player .seek { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.player .seek input { flex: 1; min-width: 0; height: 8px; }
+.player .seek input::-webkit-slider-thumb { width: 18px; height: 18px; }
+
+.hint { margin: 0 0 0 4px; font-size: 13px; color: var(--ink-mute); letter-spacing: .5px; text-transform: uppercase; }
+
+/* ---- Handy ---------------------------------------------------------------------- */
+@media (max-width: 760px) {
+  .shell { flex-direction: column-reverse; padding: 8px 8px calc(78px + env(safe-area-inset-bottom)); gap: 8px; }
+  .nav { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 9; width: auto; flex-direction: row; justify-content: space-around;
+    padding: 8px; border-radius: 28px 28px 28px 28px; gap: 6px; background: linear-gradient(oklch(0.72 0.13 45 / 22%), oklch(0.72 0.13 45 / 22%)), oklch(0.24 0 0 / 88%); }
+  .nav .brand { display: none; } .nav a { flex: 1; max-width: 66px; }
+  main { padding-bottom: 150px; }
+  .tile { padding: 14px 14px 16px 24px; border-radius: 26px 10px 10px 26px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; }
+  .slider { grid-template-columns: 84px 1fr 44px; gap: 10px; }
+  .player { bottom: calc(82px + env(safe-area-inset-bottom)); grid-template-columns: 48px minmax(0, 1fr) auto; grid-template-areas: "c t k" "s s s"; gap: 8px 12px; padding: 10px 12px; border-radius: 30px 14px 14px 30px; }
+  .player .cover { grid-area: c; width: 48px; } .player .t { grid-area: t; min-width: 0; } .player .ctl { grid-area: k; } .player .seek { grid-area: s; }
+  .player .ctl .btn { width: 40px; height: 40px; } .player .ctl .btn.primary { width: 48px; }
+  .player .t b, .player .t small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@media (prefers-reduced-motion: reduce) { .eq span, .busy .bars i { animation: none; opacity: .8; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="nav pane">
+    <div class="brand"></div>
+    <a href="#" title="Dashboard"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></a>
+    <a href="#" class="active" title="Bibliothek"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></a>
+    <a href="#" title="Playlists"><svg viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg></a>
+    <a href="#" title="Zeitpläne"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/></svg></a>
+    <a href="#" title="Graph"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="18" r="2.5"/><circle cx="19" cy="18" r="2.5"/><line x1="12" y1="7.5" x2="5.8" y2="15.7"/><line x1="12" y1="7.5" x2="18.2" y2="15.7"/><line x1="7.5" y1="18" x2="16.5" y2="18"/></svg></a>
+  </nav>
+
+  <main>
+    <section class="tile pane">
+      <h3>Bibliothek</h3>
+      <div class="stack">
+        <input class="field" placeholder="Titel, Künstler, Album suchen…" />
+        <div class="row">
+          <button class="tab on">Künstler</button><button class="tab">Alben</button><button class="tab">Genres</button><button class="tab">Playlists</button><button class="tab">Ordner</button>
+        </div>
+        <div class="busy"><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i></div><span>Frage die Bibliothek ab · 2 s</span></div>
+      </div>
+      <div class="grid" id="grid"></div>
+    </section>
+
+    <section class="tile pane">
+      <h3>Broilers</h3>
+      <div class="row" style="align-items:center">
+        <button class="btn primary">▶ Alle abspielen</button><button class="btn">⇄ Zufällig</button><button class="btn">＋ Warteschlange</button>
+        <span class="chip hot">Top 10 %</span><span class="chip">12 Titel</span><span class="chip">122 BPM</span>
+      </div>
+      <ul class="tracks">
+        <li class="track"><div class="cover" style="background:#6699cc"><i></i></div><div class="t"><b>Nur nach vorne gehen</b><small>Broilers · Jolly Good Fellas</small></div><time>3:07</time></li>
+        <li class="track now"><div class="cover" style="background:#cc99cc"><i></i></div><div class="t"><b>Ist da jemand</b><small>Broilers · Jolly Good Fellas</small></div><span class="eq"><span></span><span></span><span></span></span><time>3:14</time></li>
+        <li class="track"><div class="cover" style="background:#ffcc66"><i></i></div><div class="t"><b>Tanzt Du noch einmal</b><small>Broilers · Santa Muerte</small></div><time>3:21</time></li>
+        <li class="track"><div class="cover" style="background:#ff9966"><i></i></div><div class="t"><b>Alles auf Anfang</b><small>Broilers · Santa Muerte</small></div><time>3:28</time></li>
+      </ul>
+    </section>
+
+    <section class="tile pane">
+      <h3>Playlist bauen</h3>
+      <div class="stack">
+        <div class="slider"><span>Tempo</span><input type="range" value="62" /><output>122</output></div>
+        <div class="slider"><span>Entspannt</span><input type="range" value="35" /><output>0.35</output></div>
+        <div class="slider"><span>Neues</span><input type="range" value="20" /><output>20 %</output></div>
+        <div class="row"><button class="btn primary">Vorschau erstellen</button><button class="btn">Name vorschlagen</button></div>
+        <p class="hint">Scheibe · Lichtkante oben · Haarlinie · Schatten darunter</p>
+      </div>
+    </section>
+  </main>
+
+  <div class="player pane">
+    <div class="cover"><i></i></div>
+    <div class="t"><b>Ist da jemand</b><small>Broilers · Jolly Good Fellas</small></div>
+    <div class="ctl"><button class="btn">⏮</button><button class="btn primary">⏸</button><button class="btn">⏭</button></div>
+    <div class="seek"><span>1:12</span><input type="range" value="38" /><span>3:14</span></div>
+  </div>
+</div>
+<script>
+const names = ["Jolly Good Fellas", "Santa Muerte", "Apocalyptica", "Plays Metallica", "MTV Unplugged", "Heilige Lieder", "Ruhe vor dem Sturm", "Nachtlicht"];
+const cols = ["#ff9966", "#6699cc", "#cc99cc", "#ffcc66", "#9999cc", "#99ccff"];
+document.getElementById("grid").innerHTML = names.map((n, i) =>
+  `<div class="album"><div class="cover" style="background:${cols[i % cols.length]}"><i></i></div><b>${n}</b><small>${6 + i * 2} Titel</small></div>`).join("");
+</script>
+</body>
+</html>

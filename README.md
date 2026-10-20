@@ -229,6 +229,10 @@ python3 scripts/match_probe.py \
   --library-json "Apple Music Library Tracks.json" --db data/library.db
 ```
 
+## Design
+
+Die Oberfläche mischt zwei Ideen: Der LCARS-Look bleibt die Identität (Antonio in Versalien, Pillen, die Farbpalette, asymmetrische Ecken, Farbbalken an den Kacheln, Winkel-Navigation). Das Material kommt von [Solid Glass](https://github.com/deeplethe/solid-glass): ein ruhiger neutraler Grund und dicke, raucherne Glasscheiben, deren Glanz am Rand sitzt (Lichtkante oben, Haarlinie, Schatten darunter). Farbe dient als Akzent. Alle Werte stehen als Variablen am Anfang von `webapp/frontend/src/index.css`. Das statische Vorlagen-Beispiel liegt in `docs/design-mockup/`.
+
 ## Tests
 
 ```bash
