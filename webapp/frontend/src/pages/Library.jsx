@@ -5,6 +5,7 @@ import {
 } from "../api.js";
 import Busy from "../components/Busy.jsx";
 import { usePlayer, formatTime } from "../components/Player.jsx";
+import { IconBack, IconFolder, IconPause, IconPlay, IconQueue, IconShuffle, IconStop, IconUp, IconDevice } from "../components/Icons.jsx";
 
 const TABS = [
   { key: "artist", label: "Künstler" },
@@ -90,20 +91,20 @@ function TrackList({ tracks, renderers, rendererId, onCastError, heading }) {
     <div>
       <div className="library-actions">
         <button className="btn-primary" disabled={starting} onClick={() => play(tracks, 0)}>
-          ▶ Alle abspielen{deviceLabel ? ` auf ${device.friendly_name}` : ""}
+          <IconPlay /> Alle abspielen{deviceLabel ? ` auf ${device.friendly_name}` : ""}
         </button>
-        <button disabled={starting} onClick={() => play(shuffled(), 0)}>🔀 Zufällig</button>
-        {!rendererId && <button onClick={() => player.enqueue(tracks)}>＋ Warteschlange</button>}
+        <button disabled={starting} onClick={() => play(shuffled(), 0)}><IconShuffle /> Zufällig</button>
+        {!rendererId && <button onClick={() => player.enqueue(tracks)}><IconQueue /> Warteschlange</button>}
         <span className="library-count">{heading ?? `${tracks.length} Titel`}</span>
       </div>
       {starting && <Busy active hint={`Starte auf ${deviceLabel}`} />}
       {onDevice && (
         <div className="library-device-now">
-          <span>📡 „{onDevice.title}" läuft auf {onDevice.label}</span>
+          <span className="library-device-text"><IconDevice /> „{onDevice.title}" läuft auf {onDevice.label}</span>
           <span className="library-device-controls">
-            <button onClick={() => control("pause")}>⏸</button>
-            <button onClick={() => control("play")}>▶</button>
-            <button onClick={() => control("stop")}>⏹</button>
+            <button aria-label="Pause" onClick={() => control("pause")}><IconPause /></button>
+            <button aria-label="Weiter" onClick={() => control("play")}><IconPlay /></button>
+            <button aria-label="Stopp" onClick={() => control("stop")}><IconStop /></button>
           </span>
         </div>
       )}
@@ -313,7 +314,7 @@ export default function Library() {
         <div className="tile">
           <div className="library-detail-head">
             <button className="library-back" onClick={back}>
-              ← {stack.length > 1 && albums ? stack[0].title : TABS.find((t) => t.key === tab).label}
+              <IconBack /> {stack.length > 1 && albums ? stack[0].title : TABS.find((t) => t.key === tab).label}
             </button>
             <h3>{stack[stack.length - 1].title}</h3>
             {tab !== "album_artist" && albumArtists(tracks).map((n) => (
@@ -323,7 +324,7 @@ export default function Library() {
           {albums && stack.length === 1 && (
             <>
               <div className="library-actions">
-                <button className="btn-primary" onClick={openAllTracks}>▶ Alle Titel</button>
+                <button className="btn-primary" onClick={openAllTracks}><IconPlay /> Alle Titel</button>
                 <span className="library-count">{albums.albums.length} Alben</span>
               </div>
               {!albums.complete && (
@@ -354,12 +355,12 @@ export default function Library() {
               <p className="library-path">{folder.path || "Medienordner"}</p>
               <ul className="folder-list">
                 {folder.path && (
-                  <li><button onClick={() => openFolder(roots.includes(folder.path) || !folder.parent ? null : folder.parent)}>↰ Eine Ebene hoch</button></li>
+                  <li><button onClick={() => openFolder(roots.includes(folder.path) || !folder.parent ? null : folder.parent)}><IconUp /> Eine Ebene hoch</button></li>
                 )}
                 {folder.folders.map((f) => (
                   <li key={f.path}>
                     <button onClick={() => openFolder(f.path)}>
-                      📁 {f.name}{f.count != null && <span className="folder-count"> · {f.count}</span>}
+                      <IconFolder /> {f.name}{f.count != null && <span className="folder-count"> · {f.count}</span>}
                     </button>
                   </li>
                 ))}

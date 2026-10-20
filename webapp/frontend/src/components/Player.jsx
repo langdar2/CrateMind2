@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { coverUrl, streamUrl } from "../api.js";
+import { IconClose, IconNext, IconPause, IconPlay, IconPrev } from "./Icons.jsx";
 
 const PlayerContext = createContext(null);
 export const usePlayer = () => useContext(PlayerContext);
@@ -135,11 +136,11 @@ export default function PlayerBar() {
         <div className="player-sub">{p.error || [current.artist, current.album].filter(Boolean).join(" · ")}</div>
       </div>
       <div className="player-controls">
-        <button aria-label="Zurück" onClick={p.previous}>⏮</button>
-        <button className="btn-primary player-play" aria-label={p.playing ? "Pause" : "Wiedergabe"} onClick={p.toggle}>
-          {p.playing ? "⏸" : "▶"}
+        <button className="player-btn" aria-label="Zurück" onClick={p.previous}><IconPrev /></button>
+        <button className="btn-primary player-btn player-play" aria-label={p.playing ? "Pause" : "Wiedergabe"} onClick={p.toggle}>
+          {p.playing ? <IconPause /> : <IconPlay />}
         </button>
-        <button aria-label="Weiter" onClick={p.next} disabled={p.index + 1 >= p.queue.length}>⏭</button>
+        <button className="player-btn" aria-label="Weiter" onClick={p.next} disabled={p.index + 1 >= p.queue.length}><IconNext /></button>
       </div>
       <div className="player-seek">
         <span>{formatTime(time.position)}</span>
@@ -151,7 +152,7 @@ export default function PlayerBar() {
         />
         <span>{formatTime(duration)}</span>
       </div>
-      <button className="player-close" aria-label="Schließen" onClick={p.stop}>✕</button>
+      <button className="player-close" aria-label="Schließen" onClick={p.stop}><IconClose /></button>
     </div>
     </>
   );
