@@ -172,6 +172,26 @@ def test_client_side_routes_fall_back_to_the_app_but_missing_files_stay_404():
         assert client.get("/api/typo").status_code == 404  # a mistyped API path must not return the app
 
 
+def test_albums_of_an_artist_come_from_vuio_and_of_an_album_artist_are_grouped():
+    with TestClient(app_module.app) as client:
+        cats = {"categories": [{"name": "72 Seasons", "track_count": 26}]}
+        with patch.object(vuio_client, "_call_tool", return_value=cats) as call:
+            body = client.get("/api/library/albums?artist=Metallica").json()
+        assert body == {"albums": [{"name": "72 Seasons", "count": 26}], "complete": True}
+        assert call.call_args.args[1] == {"kind": "album", "artist": "Metallica"}
+
+        files = {"tracks": [_vuio_file(1, album="B", year=2001), _vuio_file(2, album="a", year=1999),
+                            _vuio_file(3, album="B", year=2001)]}
+        with patch.object(vuio_client, "_call_tool", return_value=files):
+            body = client.get("/api/library/albums?album_artist=Various").json()
+        assert [(a["name"], a["count"], a["year"]) for a in body["albums"]] == [("a", 1, 1999), ("B", 2, 2001)]
+        assert body["complete"] is True
+        full = {"tracks": [_vuio_file(i, album="X") for i in range(500)]}
+        with patch.object(vuio_client, "_call_tool", return_value=full):
+            assert client.get("/api/library/albums?album_artist=V").json()["complete"] is False
+        assert client.get("/api/library/albums").status_code == 400
+
+
 def test_rating_endpoint_persists_and_takes_effect_without_restart():
     with TestClient(app_module.app) as client:
         r = client.put("/api/ratings", json={"path": "/music/a.mp3", "rating": 1})
@@ -812,6 +832,7 @@ def test_retry_failed_endpoint_resets_failed_tracks():
 
 if __name__ == "__main__":
     test_stats_endpoint_returns_counts()
+    test_albums_of_an_artist_come_from_vuio_and_of_an_album_artist_are_grouped()
     test_client_side_routes_fall_back_to_the_app_but_missing_files_stay_404()
     test_group_cover_uses_the_first_track_and_404s_without_one()
     test_library_endpoints_return_slim_sorted_tracks_and_categories()

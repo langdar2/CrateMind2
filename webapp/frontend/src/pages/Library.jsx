@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  getCategories, getLibraryTracks, searchLibrary, browseFolder, getVuioPlaylists,
+  getCategories, getArtistAlbums, getLibraryTracks, searchLibrary, browseFolder, getVuioPlaylists,
   getVuioPlaylistTracks, getRenderers, castMedia, coverUrl, groupCoverUrl,
 } from "../api.js";
 import Busy from "../components/Busy.jsx";
@@ -112,6 +112,8 @@ export default function Library() {
   const [stack, setStack] = useState([]); // drill-down: [{title, load}]
   const [items, setItems] = useState(null);
   const [tracks, setTracks] = useState(null);
+  const [albums, setAlbums] = useState(null); // an artist's albums, shown before their tracks
+  const [scope, setScope] = useState(null);   // the artist filter the albums belong to
   const [folder, setFolder] = useState(null);
   const [roots, setRoots] = useState([]); // library roots: going up from one returns to the list of roots
   const [filter, setFilter] = useState("");
@@ -178,6 +180,17 @@ export default function Library() {
 
   const open = (item) => {
     const title = item.name;
+    setAlbums(null);
+    setScope(null);
+    // Artists and album artists open on their albums; the rest straight on their tracks.
+    if (tab === "artist" || tab === "album_artist") {
+      const filter = tab === "artist" ? { artist: item.name } : { album_artist: item.name };
+      setStack([{ title }]);
+      setTracks(null);
+      setScope(filter);
+      run(async () => setAlbums(await getArtistAlbums(filter)));
+      return;
+    }
     const load =
       tab === "playlist" ? () => getVuioPlaylistTracks(item.id)
       : tab === "artist" ? () => getLibraryTracks({ artist: item.name })
@@ -195,9 +208,29 @@ export default function Library() {
       setFolder(offset ? { ...page, folders: folder.folders, tracks: [...folder.tracks, ...page.tracks] } : page);
     });
 
+  const openAlbum = (album) => {
+    setStack((s) => [s[0], { title: album.name }]);
+    setTracks(null);
+    run(async () => setTracks((await getLibraryTracks({ ...scope, album: album.name })).tracks));
+  };
+
+  const openAllTracks = () => {
+    setStack((s) => [s[0], { title: "Alle Titel" }]);
+    setTracks(null);
+    run(async () => setTracks((await getLibraryTracks(scope)).tracks));
+  };
+
+  // One step up: from an album's tracks to the artist's albums, from there to the list.
   const back = () => {
+    if (stack.length > 1 && albums) {
+      setStack((s) => [s[0]]);
+      setTracks(null);
+      return;
+    }
     setStack([]);
     setTracks(null);
+    setAlbums(null);
+    setScope(null);
   };
 
   const chooseRenderer = (id) => {
@@ -250,13 +283,40 @@ export default function Library() {
       ) : inDetail ? (
         <div className="tile">
           <div className="library-detail-head">
-            <button className="library-back" onClick={back}>← {TABS.find((t) => t.key === tab).label}</button>
-            <h3>{stack[0].title}</h3>
+            <button className="library-back" onClick={back}>
+              ← {stack.length > 1 && albums ? stack[0].title : TABS.find((t) => t.key === tab).label}
+            </button>
+            <h3>{stack[stack.length - 1].title}</h3>
             {tab !== "album_artist" && albumArtists(tracks).map((n) => (
               <span key={n} className="chip chip-new">Album-Künstler: {n}</span>
             ))}
           </div>
-          {tracks ? <TrackList tracks={tracks} {...trackProps} /> : !busy && null}
+          {albums && stack.length === 1 && (
+            <>
+              <div className="library-actions">
+                <button className="btn-primary" onClick={openAllTracks}>▶ Alle Titel</button>
+                <span className="library-count">{albums.albums.length} Alben</span>
+              </div>
+              {!albums.complete && (
+                <p className="library-note">Sehr viele Titel: VuIO nennt höchstens 500, die Liste kann unvollständig sein.</p>
+              )}
+              {albums.albums.length === 0 && <p>Keine Alben gefunden.</p>}
+              <ul className="grid-list grid-albums">
+                {albums.albums.map((al) => (
+                  <li key={al.name}>
+                    <button className="grid-item" onClick={() => openAlbum(al)}>
+                      <Cover name={al.name} src={groupCoverUrl({ ...scope, album: al.name })} />
+                      <span className="grid-name">{al.name || "Ohne Album"}</span>
+                      <span className="grid-count">
+                        {[al.year, al.count != null ? `${al.count} Titel` : null].filter(Boolean).join(" · ")}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {tracks && <TrackList tracks={tracks} {...trackProps} />}
         </div>
       ) : tab === "folder" ? (
         <div className="tile">

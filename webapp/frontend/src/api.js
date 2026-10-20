@@ -95,6 +95,7 @@ const qs = (params) =>
 
 export const getCategories = (kind, params = {}) =>
   request(`/library/categories?${qs({ kind, ...params })}`);
+export const getArtistAlbums = (params) => request(`/library/albums?${qs(params)}`);
 export const getLibraryTracks = (params) => request(`/library/tracks?${qs(params)}`);
 export const searchLibrary = (q) => request(`/library/search?${qs({ q })}`);
 export const browseFolder = (path, offset = 0) =>

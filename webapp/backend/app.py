@@ -761,6 +761,30 @@ def library_tracks(artist: Optional[str] = None, album: Optional[str] = None,
     return {"tracks": tracks}
 
 
+@app.get("/api/library/albums")
+def library_albums(artist: Optional[str] = None, album_artist: Optional[str] = None):
+    """The albums of one artist or album artist, with their track counts.
+
+    VuIO counts albums per track artist itself, exactly. It has no such view
+    for album artists, so those are grouped from their tracks - and VuIO hands
+    out at most 500 of those, which `complete` says when it may have cut off.
+    """
+    if artist:
+        items = _vuio(vuio_client.list_categories, "album", artist)
+        return {"albums": items, "complete": True}
+    if album_artist:
+        files = _vuio(vuio_client.find_music, None, None, album_artist)
+        counts, years = {}, {}
+        for f in files:
+            name = f.get("album") or ""
+            counts[name] = counts.get(name, 0) + 1
+            years[name] = min(years.get(name) or 9999, f.get("year") or 9999)
+        albums = [{"name": n, "count": c, "year": years[n] if years[n] != 9999 else None}
+                  for n, c in sorted(counts.items(), key=lambda kv: kv[0].lower())]
+        return {"albums": albums, "complete": len(files) < 500}
+    raise HTTPException(status_code=400, detail="give an artist or an album artist")
+
+
 @app.get("/api/library/search")
 def library_search(q: str):
     if len(q.strip()) < 2:
