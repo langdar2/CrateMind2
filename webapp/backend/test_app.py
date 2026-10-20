@@ -150,6 +150,10 @@ def test_group_cover_uses_the_first_track_and_404s_without_one():
                 patch.object(app_module, "_proxy_media", return_value=app_module.Response(b"img")) as proxy:
             r = client.get("/api/library/cover?artist=Broilers")
         assert r.content == b"img" and proxy.call_args.args[:2] == (9, "cover")
+        with patch.object(vuio_client, "find_music", return_value=[{"id": 4}]) as find, \
+                patch.object(app_module, "_proxy_media", return_value=app_module.Response(b"i")):
+            client.get("/api/library/cover?album_artist=Various")
+        assert find.call_args.args[2] == "Various"  # passed as the album artist, not the artist
 
 
 def test_client_side_routes_fall_back_to_the_app_but_missing_files_stay_404():

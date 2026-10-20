@@ -8,6 +8,7 @@ import { usePlayer, formatTime } from "../components/Player.jsx";
 
 const TABS = [
   { key: "artist", label: "Künstler" },
+  { key: "album_artist", label: "Album-Künstler" },
   { key: "album", label: "Alben" },
   { key: "genre", label: "Genres" },
   { key: "playlist", label: "Playlists" },
@@ -66,7 +67,12 @@ function TrackList({ tracks, renderers, rendererId, onCastError, heading }) {
               <Cover id={t.id} name={t.album || t.title} className="cover-sm" />
               <span className="track-text">
                 <span className="track-title">{t.title}</span>
-                <span className="track-sub">{[t.artist, t.album].filter(Boolean).join(" · ")}</span>
+                <span className="track-sub">
+                  {[t.artist, t.album].filter(Boolean).join(" · ")}
+                  {t.album_artist && t.album_artist !== t.artist && (
+                    <span className="track-albumartist"> · Album von {t.album_artist}</span>
+                  )}
+                </span>
               </span>
               <span className="track-time">{t.duration ? formatTime(t.duration) : ""}</span>
             </button>
@@ -79,6 +85,12 @@ function TrackList({ tracks, renderers, rendererId, onCastError, heading }) {
       </ul>
     </div>
   );
+}
+
+// Who the albums in a list belong to, when that is not obvious from the heading (a compilation, a featured artist).
+function albumArtists(tracks) {
+  const names = [...new Set((tracks || []).map((t) => t.album_artist).filter(Boolean))];
+  return names.length > 0 && names.length <= 3 ? names : [];
 }
 
 export default function Library() {
@@ -155,6 +167,7 @@ export default function Library() {
     const load =
       tab === "playlist" ? () => getVuioPlaylistTracks(item.id)
       : tab === "artist" ? () => getLibraryTracks({ artist: item.name })
+      : tab === "album_artist" ? () => getLibraryTracks({ album_artist: item.name })
       : tab === "album" ? () => getLibraryTracks({ album: item.name })
       : () => getLibraryTracks({ genre: item.name });
     setStack([{ title }]);
@@ -223,6 +236,9 @@ export default function Library() {
           <div className="library-detail-head">
             <button className="library-back" onClick={back}>← {TABS.find((t) => t.key === tab).label}</button>
             <h3>{stack[0].title}</h3>
+            {tab !== "album_artist" && albumArtists(tracks).map((n) => (
+              <span key={n} className="chip chip-new">Album-Künstler: {n}</span>
+            ))}
           </div>
           {tracks ? <TrackList tracks={tracks} {...trackProps} /> : !busy && null}
         </div>
@@ -262,7 +278,8 @@ export default function Library() {
                 <button className="grid-item" onClick={() => open(item)}>
                   <Cover name={item.name}
                          src={tab === "album" ? groupCoverUrl({ album: item.name })
-                           : tab === "artist" ? groupCoverUrl({ artist: item.name }) : null} />
+                           : tab === "artist" ? groupCoverUrl({ artist: item.name })
+                           : tab === "album_artist" ? groupCoverUrl({ album_artist: item.name }) : null} />
                   <span className="grid-name">{item.name}</span>
                   {item.count != null && <span className="grid-count">{item.count} Titel</span>}
                 </button>

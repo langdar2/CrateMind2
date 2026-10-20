@@ -879,17 +879,18 @@ _cover_tracks = {}
 
 
 @app.get("/api/library/cover")
-async def library_cover(request: Request, album: Optional[str] = None, artist: Optional[str] = None):
+async def library_cover(request: Request, album: Optional[str] = None, artist: Optional[str] = None,
+                        album_artist: Optional[str] = None):
     """Artwork for a whole album or artist: the cover of its first track.
 
     The grids show hundreds of albums, so the browser asks for these lazily,
     one image at a time, as they scroll into view.
     """
-    if not album and not artist:
-        raise HTTPException(status_code=400, detail="give an album or an artist")
-    key = (album, artist)
+    if not album and not artist and not album_artist:
+        raise HTTPException(status_code=400, detail="give an album, an artist or an album artist")
+    key = (album, artist, album_artist)
     if key not in _cover_tracks:
-        files = await asyncio.to_thread(_vuio, vuio_client.find_music, artist, album, None, None, None, 1)
+        files = await asyncio.to_thread(_vuio, vuio_client.find_music, artist, album, album_artist, None, None, 1)
         _cover_tracks[key] = files[0].get("id") if files else None
     if _cover_tracks[key] is None:
         raise HTTPException(status_code=404, detail="nothing found")

@@ -887,3 +887,4 @@ input[type="range"]:disabled {
 }
 
 .folder-count { color: var(--text-muted); font-weight: 400; }
+.track-albumartist { color: var(--lcars-lilac); }
