@@ -74,7 +74,8 @@ h1, h2, h3, h4 {
   display: flex;
   min-height: 100vh;
   gap: 10px;
-  padding: 10px;
+  padding: calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
+    10px calc(10px + env(safe-area-inset-left));
 }
 
 .sidebar {
@@ -87,9 +88,9 @@ h1, h2, h3, h4 {
   padding: 18px 0;
   gap: 10px;
   position: sticky;
-  top: 10px;
+  top: calc(10px + env(safe-area-inset-top));
   align-self: flex-start;
-  max-height: calc(100vh - 20px);
+  max-height: calc(100vh - 20px - env(safe-area-inset-top));
   background: linear-gradient(oklch(0.72 0.13 45 / 22%), oklch(0.72 0.13 45 / 22%)), var(--card);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
@@ -822,14 +823,15 @@ input[type="range"]:disabled {
 @media (max-width: 760px) {
   .app-shell {
     flex-direction: column-reverse;
-    padding: 8px 8px calc(78px + env(safe-area-inset-bottom));
+    padding: calc(8px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right))
+      calc(78px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
     gap: 8px;
   }
 
   .sidebar {
     position: fixed;
-    left: 8px;
-    right: 8px;
+    left: calc(8px + env(safe-area-inset-left));
+    right: calc(8px + env(safe-area-inset-right));
     bottom: calc(8px + env(safe-area-inset-bottom));
     top: auto;
     max-height: none;
@@ -860,8 +862,8 @@ input[type="range"]:disabled {
   /* The player sits just above the navigation bar, as a compact two-row card. */
   .player-spacer { height: 120px; }
   .player-bar {
-    left: 8px;
-    right: 8px;
+    left: calc(8px + env(safe-area-inset-left));
+    right: calc(8px + env(safe-area-inset-right));
     bottom: calc(82px + env(safe-area-inset-bottom));
     grid-template-columns: 48px minmax(0, 1fr) auto 32px;
     grid-template-areas: "cover meta controls close" "seek seek seek seek";
