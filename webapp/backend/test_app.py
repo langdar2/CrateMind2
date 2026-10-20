@@ -165,6 +165,7 @@ def test_client_side_routes_fall_back_to_the_app_but_missing_files_stay_404():
         r = client.get("/library")
         assert r.status_code == 200 and "app" in r.text and r.headers["cache-control"] == "no-cache"
         assert client.get("/assets/missing.js").status_code == 404
+        assert client.get("/api/typo").status_code == 404  # a mistyped API path must not return the app
 
 
 def test_rating_endpoint_persists_and_takes_effect_without_restart():

@@ -926,7 +926,7 @@ class FrontendFiles(StaticFiles):
         try:
             response = await super().get_response(path, scope)
         except StarletteHTTPException as e:
-            if e.status_code != 404 or "." in path.rsplit("/", 1)[-1]:
+            if e.status_code != 404 or "." in path.rsplit("/", 1)[-1] or path.startswith("api/"):
                 raise
             response = await super().get_response("index.html", scope)
         if response.status_code in (200, 304):
