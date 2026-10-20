@@ -927,3 +927,5 @@ input[type="range"]:disabled {
 .tile h3 svg { width: 1em; height: 1em; vertical-align: -0.15em; }
 .player-cover svg { width: 26px; height: 26px; }
 .card-row button { padding: 6px 12px; }
+
+.grid-sentinel { height: 1px; }

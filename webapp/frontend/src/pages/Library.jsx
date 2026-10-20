@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  getCategories, getArtistAlbums, getLibraryTracks, searchLibrary, browseFolder, getVuioPlaylists,
+  getCategories, cachedList, storeList, getArtistAlbums, getLibraryTracks, searchLibrary, browseFolder, getVuioPlaylists,
   getVuioPlaylistTracks, getRenderers, playOnRenderer, controlRenderer, coverUrl, groupCoverUrl,
 } from "../api.js";
 import Busy from "../components/Busy.jsx";
@@ -28,6 +28,10 @@ function rendererLabel(r, all) {
     && o.protocol === r.protocol);
   return clash && r.model ? `${label} (${r.model})` : label;
 }
+
+// Tiles drawn at a time. Thousands of tiles at once means thousands of cover
+// requests at once; this way only what is near the screen is drawn and fetched.
+const PAGE = 48;
 
 const PALETTE = ["#ff9966", "#ffcc66", "#cc99cc", "#6699cc", "#9999cc", "#ffcc99"];
 const colourFor = (name) => PALETTE[[...name].reduce((n, c) => n + c.charCodeAt(0), 0) % PALETTE.length];
@@ -147,6 +151,8 @@ export default function Library() {
   const [folder, setFolder] = useState(null);
   const [roots, setRoots] = useState([]); // library roots: going up from one returns to the list of roots
   const [filter, setFilter] = useState("");
+  const [visible, setVisible] = useState(PAGE);
+  const sentinel = useRef(null);
   const [query, setQuery] = useState("");
   const [searchResult, setSearchResult] = useState(null);
   const [renderers, setRenderers] = useState([]);
@@ -174,7 +180,8 @@ export default function Library() {
     getRenderers().then((r) => setRenderers(r.renderers || [])).catch(() => {});
   }, []);
 
-  // Top level of a tab.
+  // Top level of a tab. The last copy is shown straight away and refreshed in
+  // the background, so a tab opens instantly after the first visit.
   useEffect(() => {
     setStack([]);
     setTracks(null);
@@ -183,16 +190,22 @@ export default function Library() {
     setFilter("");
     setSearchResult(null);
     setQuery("");
+    setVisible(PAGE);
+    const cached = tab === "folder" ? null : cachedList(tab);
+    if (cached) setItems(cached);
     run(async () => {
       if (tab === "playlist") {
         const r = await getVuioPlaylists();
-        setItems(r.playlists.map((p) => ({ name: p.name, count: p.track_count, id: p.id, sub: p.description })));
+        const fresh = r.playlists.map((p) => ({ name: p.name, count: p.track_count, id: p.id, sub: p.description }));
+        storeList(tab, fresh);
+        setItems(fresh);
       } else if (tab === "folder") {
         const top = await browseFolder(null);
         setRoots(top.folders.map((f) => f.path));
         setFolder(top);
       } else {
         const r = await getCategories(tab);
+        storeList(tab, r.items);
         setItems(r.items);
       }
     });
@@ -268,14 +281,30 @@ export default function Library() {
     localStorage.setItem("cratemind:renderer", id);
   };
 
-  const shown = useMemo(() => {
+  const inDetail = stack.length > 0;
+  const matching = useMemo(() => {
     if (!items) return [];
     const f = filter.trim().toLowerCase();
     return f ? items.filter((i) => i.name.toLowerCase().includes(f)) : items;
   }, [items, filter]);
+  const shown = matching.slice(0, visible);
+
+  // A new filter starts at the top again.
+  useEffect(() => setVisible(PAGE), [filter]);
+
+  // Draw the next batch when the end of the grid comes into view.
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => entries[0].isIntersecting && setVisible((v) => v + PAGE),
+      { rootMargin: "600px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [matching.length, visible, inDetail, searchResult]);
 
   const trackProps = { renderers, rendererId, onCastError: setError };
-  const inDetail = stack.length > 0;
 
   return (
     <div className="library">
@@ -392,6 +421,7 @@ export default function Library() {
               </li>
             ))}
           </ul>
+          {shown.length < matching.length && <div ref={sentinel} className="grid-sentinel" />}
         </div>
       )}
     </div>

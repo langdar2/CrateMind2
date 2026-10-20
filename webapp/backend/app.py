@@ -960,7 +960,9 @@ async def _proxy_media(file_id: int, kind: str, request: Request):
     passthrough = {k: v for k, v in upstream.headers.items()
                    if k.lower() in ("content-type", "content-length", "content-range", "accept-ranges")}
     if kind == "cover":
-        passthrough["Cache-Control"] = "public, max-age=86400"
+        # Artwork hardly ever changes: a week in the browser (the app's web view
+        # included), so a revisit does not ask the server again.
+        passthrough["Cache-Control"] = "public, max-age=604800"
     return StreamingResponse(body(), status_code=upstream.status_code, headers=passthrough)
 
 

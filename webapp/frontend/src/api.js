@@ -95,6 +95,26 @@ const qs = (params) =>
 
 export const getCategories = (kind, params = {}) =>
   request(`/library/categories?${qs({ kind, ...params })}`);
+
+// Stale-while-revalidate for the big top-level lists: show what was loaded last
+// time at once, and refresh it in the background. The lists change rarely, so
+// the old copy is nearly always still right - and opening a tab is instant.
+const LIST_CACHE_PREFIX = "cratemind:list:";
+export function cachedList(key) {
+  try {
+    const raw = localStorage.getItem(LIST_CACHE_PREFIX + key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+export function storeList(key, items) {
+  try {
+    localStorage.setItem(LIST_CACHE_PREFIX + key, JSON.stringify(items));
+  } catch {
+    // Storage full or blocked: the cache is an optimisation, never required.
+  }
+}
 export const getArtistAlbums = (params) => request(`/library/albums?${qs(params)}`);
 export const getLibraryTracks = (params) => request(`/library/tracks?${qs(params)}`);
 export const searchLibrary = (q) => request(`/library/search?${qs({ q })}`);
