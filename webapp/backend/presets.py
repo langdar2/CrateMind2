@@ -207,3 +207,18 @@ def filter_by_criteria(tracks: list, criteria: dict, limit: int = 30,
     woven = _weave(matches[:limit - len(picks)], dedupe_by_song(picks))
     # Cap again: a discovery pick can share an artist with the scored portion.
     return cap_per_artist(woven)[:limit]
+
+
+def newest_albums(tracks: list, count: int) -> list:
+    """The tracks of the `count` most recently added albums, newest album first.
+
+    An album is a folder. Its age is when its first file was seen, since that is
+    when it was added (the last file only says how long the copy took). Tracks
+    keep their album order inside it. Tracks without a first_seen sort last.
+    """
+    albums = {}
+    for t in tracks:
+        albums.setdefault(t["path"].rsplit("/", 1)[0], []).append(t)
+    newest = sorted(albums.values(),
+                    key=lambda ts: min((t.get("first_seen") or 0) for t in ts), reverse=True)[:max(0, count)]
+    return [t for album in newest for t in sorted(album, key=lambda t: t["path"])]

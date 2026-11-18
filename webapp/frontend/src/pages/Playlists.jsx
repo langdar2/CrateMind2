@@ -19,6 +19,7 @@ const MODES = [
   { id: "seed", label: "Seed-Track" },
   { id: "smart", label: "Smart (Vibe)" },
   { id: "wishlist", label: "Wunschliste" },
+  { id: "new_albums", label: "Neue Alben" },
 ];
 
 const MOOD_FIELDS = [
@@ -36,6 +37,7 @@ function previewHint(mode) {
     smart: "Das Modell sortiert 150 Kandidaten nach deiner Stimmung",
     seed: "Suche klanglich ähnliche Tracks",
     wishlist: "Gleiche die Liste mit der Bibliothek ab und fülle auf",
+    new_albums: "Suche die zuletzt hinzugefügten Alben",
   }[mode] || "Stelle die Vorschau zusammen";
 }
 
@@ -43,6 +45,7 @@ export default function Playlists() {
   const [hasTracks, setHasTracks] = useState(null);
   const [mode, setMode] = useState("manual");
   const [prompt, setPrompt] = useState("");
+  const [albumCount, setAlbumCount] = useState(20);
   const [seedQuery, setSeedQuery] = useState("");
   const [seedResults, setSeedResults] = useState([]);
   const [seedPath, setSeedPath] = useState("");
@@ -150,6 +153,8 @@ export default function Playlists() {
         ? { mode, criteria: manualCriteria(), discovery: discovery / 100 }
         : mode === "prompt"
         ? { mode, prompt, discovery: discovery / 100 }
+        : mode === "new_albums"
+        ? { mode, albums: albumCount }
         : mode === "smart"
         ? { mode, seed_path: seedPath || undefined, mood_prompt: moodPrompt }
         : { mode, seed_path: seedPath, taste_weight: tasteWeight / 100 });
@@ -349,6 +354,26 @@ export default function Playlists() {
                 style={{ gridColumn: "2 / 4" }}
               />
               <span className="slider-value">{wishLimit} Tracks</span>
+            </div>
+          </div>
+        )}
+
+        {mode === "new_albums" && (
+          <div style={{ marginTop: "12px" }}>
+            <p className="playlist-description">
+              Die zuletzt hinzugefügten Alben, komplett und in Albumreihenfolge. Als Playlist
+              findest du sie auch an Geräten, die nur VuIOs DLNA-Baum sehen. Unter „Automatische
+              Mixe" lässt sie sich täglich erneuern.
+            </p>
+            <div className="slider-row">
+              <span className="label">Anzahl Alben</span>
+              <input
+                type="range" min="5" max="50" step="1"
+                value={albumCount}
+                onChange={(e) => setAlbumCount(+e.target.value)}
+                style={{ gridColumn: "2 / 4" }}
+              />
+              <span className="slider-value">{albumCount}</span>
             </div>
           </div>
         )}

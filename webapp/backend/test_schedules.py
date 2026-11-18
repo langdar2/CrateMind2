@@ -60,7 +60,7 @@ def test_describe_reads_back_in_german():
 def test_validate_rejects_impossible_times():
     schedules.validate(0, 0, 0)
     schedules.validate(6, 23, 59)
-    for bad in [(7, 0, 0), (-1, 0, 0), (0, 24, 0), (0, 0, 60)]:
+    for bad in [(7, 0, 0), (-2, 0, 0), (0, 24, 0), (0, 0, 60)]:
         try:
             schedules.validate(*bad)
             assert False, f"expected ValueError for {bad}"
@@ -68,7 +68,38 @@ def test_validate_rejects_impossible_times():
             pass
 
 
+def test_daily_schedule_fires_once_a_day_at_its_time():
+    d = schedules.DAILY
+    # Saturday 10:00: today's 06:17 has passed, tomorrow's has not.
+    assert schedules.previous_occurrence(d, 6, 17, NOW) == datetime(2026, 10, 10, 6, 17)
+    assert schedules.next_occurrence(d, 6, 17, NOW) == datetime(2026, 10, 11, 6, 17)
+    # Before today's time it still owes yesterday's.
+    assert schedules.previous_occurrence(d, 23, 0, NOW) == datetime(2026, 10, 9, 23, 0)
+
+
+def test_daily_schedule_is_due_until_it_has_run_since_the_last_slot():
+    d = schedules.DAILY
+    ran_this_morning = datetime(2026, 10, 10, 6, 30).timestamp()
+    ran_yesterday = datetime(2026, 10, 9, 6, 30).timestamp()
+    assert not schedules.is_due(_sched(d, 6, 17, ran_this_morning), NOW)
+    assert schedules.is_due(_sched(d, 6, 17, ran_yesterday), NOW)  # a missed day is caught up
+
+
+def test_daily_validates_and_describes():
+    schedules.validate(schedules.DAILY, 6, 17)
+    assert schedules.describe(_sched(schedules.DAILY, 6, 17)) == "Täglich 06:17"
+    try:
+        schedules.validate(-2, 6, 17)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("-2 is no weekday")
+
+
 if __name__ == "__main__":
+    test_daily_schedule_fires_once_a_day_at_its_time()
+    test_daily_schedule_is_due_until_it_has_run_since_the_last_slot()
+    test_daily_validates_and_describes()
     test_previous_occurrence_walks_back_to_the_right_weekday()
     test_same_day_but_later_belongs_to_the_previous_week()
     test_next_occurrence_is_a_week_after_the_previous()

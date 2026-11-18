@@ -1,4 +1,4 @@
-"""Weekly schedules for automatic playlist refreshes.
+"""Weekly or daily schedules for automatic playlist refreshes.
 
 The launchd agents on the host cannot be managed from inside the container
 (no launchctl, no access to ~/Library/LaunchAgents), so the schedule lives
@@ -19,9 +19,15 @@ def _as_ui_weekday(moment: datetime) -> int:
     return (moment.weekday() + 1) % 7
 
 
+# weekday DAILY means every day at that time.
+DAILY = -1
+
+
 def previous_occurrence(weekday: int, hour: int, minute: int, now: datetime) -> datetime:
     """The most recent moment this schedule should have fired, at or before now."""
     candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if weekday == DAILY:
+        return candidate - timedelta(days=1) if candidate > now else candidate
     days_back = (_as_ui_weekday(candidate) - weekday) % 7
     candidate -= timedelta(days=days_back)
     if candidate > now:
@@ -30,7 +36,7 @@ def previous_occurrence(weekday: int, hour: int, minute: int, now: datetime) -> 
 
 
 def next_occurrence(weekday: int, hour: int, minute: int, now: datetime) -> datetime:
-    return previous_occurrence(weekday, hour, minute, now) + timedelta(days=7)
+    return previous_occurrence(weekday, hour, minute, now) + timedelta(days=1 if weekday == DAILY else 7)
 
 
 def is_due(schedule: dict, now: datetime) -> bool:
@@ -48,13 +54,14 @@ def is_due(schedule: dict, now: datetime) -> bool:
 
 
 def describe(schedule: dict) -> str:
-    return f"{WEEKDAYS[schedule['weekday']]} {schedule['hour']:02d}:{schedule['minute']:02d}"
+    day = "Täglich" if schedule["weekday"] == DAILY else WEEKDAYS[schedule["weekday"]]
+    return f"{day} {schedule['hour']:02d}:{schedule['minute']:02d}"
 
 
 def validate(weekday: int, hour: int, minute: int) -> None:
     """Raise ValueError on anything the scheduler could not act on."""
-    if not 0 <= weekday <= 6:
-        raise ValueError("weekday muss zwischen 0 (Sonntag) und 6 (Samstag) liegen")
+    if not DAILY <= weekday <= 6:
+        raise ValueError("weekday muss -1 (täglich) oder zwischen 0 (Sonntag) und 6 (Samstag) liegen")
     if not 0 <= hour <= 23:
         raise ValueError("hour muss zwischen 0 und 23 liegen")
     if not 0 <= minute <= 59:

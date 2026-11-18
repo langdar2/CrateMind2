@@ -307,7 +307,34 @@ def test_fresh_quota_still_returns_a_full_list_when_the_artist_cap_bites():
     assert len(newband) == presets.MAX_PER_ARTIST
 
 
+def _trk(path, first_seen):
+    return {"path": path, "first_seen": first_seen}
+
+
+def test_newest_albums_takes_whole_albums_newest_first_in_track_order():
+    tracks = [
+        _trk("/m/Old - A/02. x.m4a", 100), _trk("/m/Old - A/01. y.m4a", 100),
+        _trk("/m/New - B/02. b.m4a", 900), _trk("/m/New - B/01. a.m4a", 905),
+        _trk("/m/Mid - C/01. c.m4a", 500),
+    ]
+    got = presets.newest_albums(tracks, 2)
+    assert [t["path"] for t in got] == ["/m/New - B/01. a.m4a", "/m/New - B/02. b.m4a", "/m/Mid - C/01. c.m4a"]
+    assert presets.newest_albums(tracks, 0) == []
+    assert len(presets.newest_albums(tracks, 99)) == 5
+
+
+def test_newest_albums_ages_an_album_by_its_first_file_and_puts_unknown_dates_last():
+    # A slow copy stretches over hours: the album still arrived when its first file did.
+    slow = [_trk("/m/Slow/01.m4a", 800), _trk("/m/Slow/02.m4a", 9000)]
+    quick = [_trk("/m/Quick/01.m4a", 850)]
+    unknown = [{"path": "/m/Unknown/01.m4a", "first_seen": None}]
+    got = [t["path"] for t in presets.newest_albums(slow + unknown + quick, 3)]
+    assert got == ["/m/Quick/01.m4a", "/m/Slow/01.m4a", "/m/Slow/02.m4a", "/m/Unknown/01.m4a"]
+
+
 if __name__ == "__main__":
+    test_newest_albums_takes_whole_albums_newest_first_in_track_order()
+    test_newest_albums_ages_an_album_by_its_first_file_and_puts_unknown_dates_last()
     test_filters_by_bpm_and_danceability()
     test_filters_by_relaxed_mood()
     test_respects_limit()

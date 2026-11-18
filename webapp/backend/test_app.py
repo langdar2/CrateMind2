@@ -232,6 +232,30 @@ def test_artists_list_folds_guests_and_their_tracks_and_albums_are_merged():
         assert app_module._artist_variants("Niemand") == ["Niemand"]
 
 
+def test_new_albums_mode_returns_whole_albums_and_can_be_scheduled_daily():
+    with TestClient(app_module.app) as client:
+        app_module.app.state.tracks = [
+            {"path": "/m/A - Old/01.m4a", "first_seen": 100, "rating": 0, "bpm": 1, "key": "C", "danceability": 0,
+             "mood_happy": 0, "mood_aggressive": 0, "mood_relaxed": 0, "mood_party": 0},
+            {"path": "/m/B - New/01.m4a", "first_seen": 900, "rating": 0, "bpm": 1, "key": "C", "danceability": 0,
+             "mood_happy": 0, "mood_aggressive": 0, "mood_relaxed": 0, "mood_party": 0},
+            {"path": "/m/B - New/02.m4a", "first_seen": 901, "rating": 0, "bpm": 1, "key": "C", "danceability": 0,
+             "mood_happy": 0, "mood_aggressive": 0, "mood_relaxed": 0, "mood_party": 0},
+        ]
+        body = client.post("/api/playlists/preview", json={"mode": "new_albums", "albums": 1}).json()
+        assert [t["path"] for t in body["tracks"]] == ["/m/B - New/01.m4a", "/m/B - New/02.m4a"]
+        # A stored recipe survives the round trip, so the scheduler can rebuild it.
+        assert app_module.PreviewRequest(**{"mode": "new_albums", "albums": 7}).albums == 7
+        db.save_recipe(app_module.app.state.conn, 4242, {"mode": "new_albums", "albums": 20})
+        with patch.object(vuio_client, "list_playlists", return_value=[{"id": 4242, "name": "Neu"}]):
+            r = client.put("/api/schedules/4242", json={"name": "Neu", "weekday": -1, "hour": 6, "minute": 30})
+        assert r.status_code == 200, r.text
+        listed = client.get("/api/schedules").json()["schedules"]
+        assert next(s for s in listed if s["playlist_id"] == 4242)["describes"] == "Täglich 06:30"
+        client.delete("/api/schedules/4242")
+        assert client.put("/api/schedules/4242", json={"name": "x", "weekday": -2, "hour": 6, "minute": 0}).status_code == 400
+
+
 def test_rating_endpoint_persists_and_takes_effect_without_restart():
     with TestClient(app_module.app) as client:
         r = client.put("/api/ratings", json={"path": "/music/a.mp3", "rating": 1})
@@ -872,6 +896,7 @@ def test_retry_failed_endpoint_resets_failed_tracks():
 
 if __name__ == "__main__":
     test_stats_endpoint_returns_counts()
+    test_new_albums_mode_returns_whole_albums_and_can_be_scheduled_daily()
     test_artists_list_folds_guests_and_their_tracks_and_albums_are_merged()
     test_play_endpoint_validates_and_passes_the_start_position()
     test_albums_of_an_artist_come_from_vuio_and_of_an_album_artist_are_grouped()

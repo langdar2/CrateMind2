@@ -232,6 +232,8 @@ class PreviewRequest(BaseModel):
     per_artist: int = 3
     # Wishlist mode: "Artist - Title" lines the playlist must contain.
     wishes: Optional[list] = None
+    # New-albums mode: how many of the most recently added albums to include whole.
+    albums: int = 20
     # These defaults are the behaviour, not a UI preference - a caller reaching
     # for the API directly should get the same playlist the app would build.
     # Seed mode only: 0 ranks purely by sound, 1 purely by taste.
@@ -567,6 +569,11 @@ def select_tracks(req: PreviewRequest) -> list:
             raise HTTPException(status_code=404, detail="Keine Tracks für diese Künstler")
         matches = presets.cap_per_artist(presets.dedupe_by_song(picked), req.per_artist)[:req.limit]
         fitting = graph.tracks_for_artists(app.state.graph, wanted)
+    elif req.mode == "new_albums":
+        # Whole albums, newest first, in track order: this is for finding what
+        # was just added (also from a DLNA player that only sees the playlist),
+        # so no fresh-music quota, discovery slots or limit may thin an album out.
+        return presets.newest_albums(tracks, req.albums)
     elif req.mode == "wishlist":
         # Songs asked for by name go in as they are; no fresh-music quota or
         # discovery slots may push one of them out of the list.

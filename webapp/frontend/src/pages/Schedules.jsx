@@ -9,6 +9,7 @@ import {
 import Busy from "../components/Busy.jsx";
 
 const WEEKDAYS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+const DAILY = -1;
 
 function summarise(recipe) {
   if (!recipe) return "kein Rezept";
@@ -18,7 +19,8 @@ function summarise(recipe) {
   if (c.min_percentile) parts.push(`Top ${100 - c.min_percentile}%`);
   if (c.min_danceability) parts.push(`Dance ≥ ${c.min_danceability}`);
   if (recipe.discovery) parts.push(`${Math.round(recipe.discovery * 100)}% neu`);
-  if (recipe.limit) parts.push(`${recipe.limit} Tracks`);
+  if (recipe.mode === "new_albums") parts.push(`${recipe.albums ?? 20} neueste Alben`);
+  else if (recipe.limit) parts.push(`${recipe.limit} Tracks`);
   return parts.join(" · ") || recipe.mode;
 }
 
@@ -137,6 +139,7 @@ export default function Schedules() {
                 onChange={(e) => setNewSlot({ ...newSlot, weekday: +e.target.value })}
                 style={{ gridColumn: "2 / 4" }}
               >
+                <option value={DAILY}>Täglich</option>
                 {WEEKDAYS.map((day, i) => (
                   <option key={day} value={i}>{day}</option>
                 ))}
@@ -193,6 +196,7 @@ export default function Schedules() {
               onChange={(e) => update(entry, { weekday: +e.target.value })}
               style={{ gridColumn: "2 / 4" }}
             >
+              <option value={DAILY}>Täglich</option>
               {WEEKDAYS.map((day, i) => (
                 <option key={day} value={i}>{day}</option>
               ))}
