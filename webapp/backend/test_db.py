@@ -247,6 +247,31 @@ def test_display_survives_a_filename_without_the_dash():
     assert d == {"artist": "DUNE", "album": "Dune", "title": "Future Is Now"}
 
 
+def test_display_ignores_a_dash_inside_brackets():
+    """"Chorus (2009 - Remaster)" has no artist in the name: do not cut at the dash."""
+    d = db.display_of("/music/Erasure/Always - The Very Best of Erasure/12. Chorus (2009 - Remaster).m4a")
+    assert d["title"] == "Chorus (2009 - Remaster)"
+    assert d["artist"] == "Erasure" and d["album"] == "Always - The Very Best of Erasure"
+    d = db.display_of("/music/A - Alb/05. Abba - Take A Chance On Me (2009 - Remaster).m4a")
+    assert d["artist"] == "Abba" and d["title"] == "Take A Chance On Me (2009 - Remaster)"
+    d = db.display_of("/music/A - Alb/16. Fingers and Thumbs (Cold Summer's Day) [2009 - Remaster].m4a")
+    assert d["title"] == "Fingers and Thumbs (Cold Summer's Day) [2009 - Remaster]"
+
+
+def test_display_reads_the_artist_from_the_parent_folder_in_the_year_layout():
+    d = db.display_of("/music/Lucenzo/2024 - Danza Kuduro (Tiësto Remix)/01. Danza Kuduro (Tiësto Remix).flac")
+    assert d == {"artist": "Lucenzo", "album": "Danza Kuduro (Tiësto Remix)", "title": "Danza Kuduro (Tiësto Remix)"}
+    # A normal two-level path whose album happens to start with a year keeps working.
+    d = db.display_of("/music/Queen - 1977 - News/01. Queen - Spread Your Wings.flac")
+    assert d["artist"] == "Queen"
+    # ... and so does a folder that is only a year-album, directly under the music root:
+    # the root is not an artist.
+    d = db.display_of("/music/1989 - Affection/01. Lisa Stansfield - Affection.flac")
+    assert d["artist"] == "Lisa Stansfield"
+    d = db.display_of("/music/1989 - Affection/02. Affection.flac")
+    assert d["artist"] != "music"
+
+
 def test_display_never_leaks_a_path():
     for path in ["/music/loose.flac", "loose.flac", ""]:
         values = db.display_of(path).values()
@@ -633,6 +658,8 @@ if __name__ == "__main__":
     test_display_prefers_the_filename_artist_on_compilations()
     test_display_handles_track_number_variants()
     test_display_survives_a_filename_without_the_dash()
+    test_display_ignores_a_dash_inside_brackets()
+    test_display_reads_the_artist_from_the_parent_folder_in_the_year_layout()
     test_display_never_leaks_a_path()
     test_fingerprint_changes_when_a_track_is_analysed()
     test_fingerprint_is_stable_when_nothing_changed()

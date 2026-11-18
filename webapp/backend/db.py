@@ -128,6 +128,19 @@ def parse_wish(line: str) -> dict:
     return {"artist": "", "title": line, "line": line}
 
 
+def _split_artist_title(name: str):
+    """(artist, title) split at the first " - " that is not inside brackets, else None."""
+    depth = 0
+    for i, ch in enumerate(name):
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth = max(0, depth - 1)
+        elif depth == 0 and name.startswith(" - ", i):
+            return name[:i], name[i + 3:]
+    return None
+
+
 def display_of(path: str) -> dict:
     """Artist, album and title for display, parsed from the path.
 
@@ -137,15 +150,30 @@ def display_of(path: str) -> dict:
     Anything that does not parse falls back to the bare filename, which is
     still better than showing a full path.
     """
-    folder = path.rsplit("/", 2)[-2] if path.count("/") >= 2 else ""
-    stem = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    parts = path.split("/")
+    folder = parts[-2] if len(parts) >= 3 else ""
+    stem = parts[-1].rsplit(".", 1)[0]
 
     album = folder.split(" - ", 1)[1].strip() if " - " in folder else folder.strip()
     name = _TRACK_NUMBER.sub("", stem)
-    # Filenames repeat the artist; prefer that one, since a compilation folder
-    # names the compilation rather than whoever plays this particular track.
-    if " - " in name:
-        artist, title = name.split(" - ", 1)
+    # A deeper layout, "Artist/Album/NN. Title", names the artist one folder up
+    # and keeps the whole folder as the album ("Erasure/Always - The Very Best
+    # of Erasure"), minus a year in front ("Lucenzo/2024 - Danza Kuduro").
+    # Without this the year, or the first word of the album, became the artist
+    # of 447 files. Needs a path below the music root: "/music/A - B/file" is
+    # the usual layout and its parent is the root, not an artist.
+    parent = parts[-3] if len(parts) >= 5 else ""
+    if parent:
+        album = re.sub(r"^\d{4}\s+-\s+", "", folder).strip()
+    # The filename repeats the artist; prefer that one, since a compilation
+    # folder names the compilation rather than whoever plays this track. The
+    # separator only counts outside brackets: "Chorus (2009 - Remaster)" has no
+    # artist in it, and splitting there left "Remaster)" as the title.
+    split = _split_artist_title(name)
+    if split:
+        artist, title = split
+    elif parent:
+        artist, title = parent.strip(), name
     else:
         artist, title = folder.split(" - ")[0].strip(), name
     # One file in the library is named only after its artists, leaving nothing
